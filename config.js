@@ -4,7 +4,7 @@
        Enquanto vazio, roda em MODO DEMONSTRAÇÃO (localStorage). <<<
    ============================================================ */
 const VEGAS_CONFIG = {
-  API_URL: "https://script.google.com/macros/s/AKfycby96SgGkR21fno6-u6O83LcEeRyWuw2slswWVIgT_z2B5YnMMVP0a_4662AvXGbn5eokQ/exec",  // ex.: "https://script.google.com/macros/s/AKfy.../exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbyfO5hKJOrRfvsZv7AGTP7IQL8wfg7mA6bmALm4df84HGALJyR2ICSnKU3hKpQ5OvJxJw/exec",  // ex.: "https://script.google.com/macros/s/AKfy.../exec"
 
   EMPRESA: "VEGAS VIGILÂNCIA",
   PREFIXO_REG: "EXT",          // EXT-2026-000001
