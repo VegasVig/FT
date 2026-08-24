@@ -80,7 +80,7 @@ function gerar(){
   r.forEach(x=>html+=`<tr>
     <td data-l="Nº"><span class="num-reg">${esc(x.numero)}</span></td><td data-l="Data">${dataBRQualquer(x.data)}</td>
     <td data-l="Funcionário">${esc(x.funcionario)}</td><td data-l="Função">${esc(x.funcao)}</td><td data-l="Posto">${esc(x.posto)}</td>
-    <td data-l="Turno">${esc(x.entrada)}–${esc(x.saida)}</td><td data-l="Horas">${esc(x.horas_texto||x.horas+'h')}</td>
+    <td data-l="Turno">${horaBR(x.entrada)}–${horaBR(x.saida)}</td><td data-l="Horas">${esc(x.horas_texto||x.horas+'h')}</td>
     <td data-l="Tipo">${esc((x.tipos||[]).join(', '))}</td><td data-l="Motivo">${esc(x.motivo)}</td>
     <td data-l="Status">${badgeStatus(x.status)}</td><td data-l="Valor">${x.valor?('R$ '+x.valor):'—'}</td></tr>`);
   html+=`</tbody></table></div>
@@ -103,7 +103,7 @@ function pdfPorFunc(){
 function csv(){
   exportarCSV('relatorio_vegas.csv',
     ['Nº','Data','Funcionário','Função','Posto','Turno','Horas','Tipo','Motivo','Solicitante','Status','Valor'],
-    resultado.map(r=>[r.numero,dataBRQualquer(r.data),r.funcionario,r.funcao,r.posto,(r.entrada+'-'+r.saida),r.horas_texto||r.horas,(r.tipos||[]).join('/'),r.motivo,r.solicitante,r.status,r.valor]));
+    resultado.map(r=>[r.numero,dataBRQualquer(r.data),r.funcionario,r.funcao,r.posto,(horaBR(r.entrada)+'-'+horaBR(r.saida)),r.horas_texto||r.horas,(r.tipos||[]).join('/'),r.motivo,r.solicitante,r.status,r.valor]));
 }
 init();
 </script>

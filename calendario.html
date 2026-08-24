@@ -70,7 +70,7 @@ function verDia(iso){
   else{h+=`<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Funcionário</th><th>Posto</th><th>Horário</th><th>Horas</th><th>Status</th></tr></thead><tbody>`;
     regs.forEach(r=>h+=`<tr onclick="location.href='extras.html?q=${encodeURIComponent(r.numero)}'" style="cursor:pointer">
       <td data-l="Nº"><span class="num-reg">${esc(r.numero)}</span></td><td data-l="Funcionário">${esc(r.funcionario)}</td>
-      <td data-l="Posto">${esc(r.posto)}</td><td data-l="Horário">${esc(r.entrada)}–${esc(r.saida)}</td>
+      <td data-l="Posto">${esc(r.posto)}</td><td data-l="Horário">${horaBR(r.entrada)}–${horaBR(r.saida)}</td>
       <td data-l="Horas">${esc(r.horas_texto||r.horas+'h')}</td><td data-l="Status">${badgeStatus(r.status)}</td></tr>`);
     h+=`</tbody></table></div>`;}
   h+=`</div>`;document.getElementById('diaDet').innerHTML=h;

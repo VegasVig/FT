@@ -102,7 +102,7 @@ function renderLista(){
       <td data-l="Funcionário">${esc(r.funcionario)}</td>
       <td data-l="Posto">${esc(r.posto)}</td>
       <td data-l="Função">${esc(r.funcao)}</td>
-      <td data-l="Horário">${esc(r.entrada)}–${esc(r.saida)}${r.vira_dia?' <span title="vira o dia">🌙</span>':''}</td>
+      <td data-l="Horário">${horaBR(r.entrada)}–${horaBR(r.saida)}${r.vira_dia?' <span title="vira o dia">🌙</span>':''}</td>
       <td data-l="Horas" class="txt-mono">${esc(r.horas_texto||(r.horas+'h'))}</td>
       <td data-l="Motivo">${esc(r.motivo)}</td>
       <td data-l="Status">${badgeStatus(r.status)}</td>
@@ -141,7 +141,7 @@ function abrir(id){
       <div class="flex mb">${badgeStatus(r.status)} ${(r.tipos||[]).map(t=>`<span class="tipo-tag">${esc(t)}</span>`).join('')}</div>
       <div class="grid grid-3" style="gap:10px">
         ${it('Data',dataBRQualquer(r.data))}${it('Dia',r.dia_semana)}${it('Solicitante',r.solicitante)}
-        ${it('Posto',r.posto)}${it('Função',r.funcao)}${it('Horário',r.entrada+'–'+r.saida)}
+        ${it('Posto',r.posto)}${it('Função',r.funcao)}${it('Horário',horaBR(r.entrada)+'–'+horaBR(r.saida))}
         ${it('Horas',r.horas_texto||(r.horas+'h'))}${it('Vira o dia',r.vira_dia?'Sim':'Não')}${it('Motivo',r.motivo)}
         ${it('Valor estimado',r.valor?('R$ '+r.valor):'—')}${it('Valor aprovado',r.valor_aprovado?('R$ '+r.valor_aprovado):'—')}${it('Criado por',(r.criado_por||'—'))}
       </div>
@@ -211,7 +211,7 @@ function exportar(){
   const lista=filtrar();
   exportarCSV('extras_vegas.csv',
     ['Nº','Data','Dia','Funcionário','Posto','Função','Entrada','Saída','Horas','Tipo','Motivo','Status','Valor'],
-    lista.map(r=>[r.numero,dataBRQualquer(r.data),r.dia_semana,r.funcionario,r.posto,r.funcao,r.entrada,r.saida,r.horas_texto||r.horas,(r.tipos||[]).join('/'),r.motivo,r.status,r.valor]));
+    lista.map(r=>[r.numero,dataBRQualquer(r.data),r.dia_semana,r.funcionario,r.posto,r.funcao,horaBR(r.entrada),horaBR(r.saida),r.horas_texto||r.horas,(r.tipos||[]).join('/'),r.motivo,r.status,r.valor]));
 }
 init();
 </script>

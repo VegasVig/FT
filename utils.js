@@ -42,13 +42,22 @@ function dataBRQualquer(v){ // aceita ISO, Date, dd/mm/aaaa
 
 /* ---------- Cálculo de horas (suporta virada de meia-noite) ---------- */
 function normalizaHora(h){
-  if(!h)return'';
-  let s=String(h).replace(/[hH]/g,':').replace(/\s/g,'');
+  if(h==null||h==='')return'';
+  // Objeto Date (o Sheets pode devolver hora como Date)
+  if(h instanceof Date && !isNaN(h))return `${pad(h.getUTCHours())}:${pad(h.getUTCMinutes())}`;
+  let s=String(h).trim();
+  // ISO com hora: 1899-12-30T22:06:28.000Z  ou  2026-08-24T07:00:00.000Z
+  let iso=/T(\d{2}):(\d{2})/.exec(s);
+  if(iso)return `${iso[1]}:${iso[2]}`;
+  // formatos normais: "22:00", "22h", "22h30", "2200"
+  s=s.replace(/[hH]/g,':').replace(/\s/g,'');
   let m=/^(\d{1,2}):?(\d{2})?$/.exec(s);
   if(!m)return'';
   let hh=Math.min(23,+m[1]),mm=m[2]?Math.min(59,+m[2]):0;
   return `${pad(hh)}:${pad(mm)}`;
 }
+/* exibe uma hora já normalizada (para usar direto no HTML) */
+function horaBR(h){return normalizaHora(h);}
 function calcularHoras(entrada,saida){
   const e=normalizaHora(entrada),s=normalizaHora(saida);
   if(!e||!s)return{horas:0,viraDia:false,texto:''};
@@ -128,32 +137,25 @@ function _extraiTipos(txt){
   return achados.length?achados:(txt?['Extra']:[]);
 }
 
-/* Divide o texto em blocos (um por registro). Estratégia:
-   - se houver linhas numeradas "1." "2)" com funcionário+posto, cada uma é um registro
-   - senão, blocos separados por linha em branco dupla ou por repetição do rótulo FUNCIONÁRIO
-   - senão, é 1 registro único */
+/* Divide o texto em blocos (um por registro) e monta os registros.
+   Suporta:
+   - vários blocos separados por linha de "____", "----" ou linha em branco
+   - blocos delimitados pela repetição de rótulos (SOLICITANTE/FUNCIONÁRIO)
+   - lista numerada "1. Nome — Posto"
+   - um único registro
+   Cada bloco herda do cabeçalho global (data e campos que vierem antes). */
 function parseWhatsApp(texto){
-  const linhas=(texto||'').split(/\r?\n/);
-  // contexto "global" (data/solicitante/motivo comuns a todos)
+  texto=String(texto||'');
+  const linhas=texto.split(/\r?\n/);
+
+  // ----- cabeçalho global: data e campos antes do 1º funcionário -----
   const global={data:'',solicitante:'',posto:'',funcao:'',turno:'',cobertura:'',motivo:''};
-  const registros=[];
-  let atual=null;
-
-  const linhasNumeradas=[]; // {nome, posto}
-  linhas.forEach(l=>{
-    const nl=_limpa(l);
-    const mn=/^(\d{1,2})[\.\)\-]\s*(.+)$/.exec(nl);
-    if(mn && !/:/.test(mn[2])){ // "1. Luis Claudio — DC Dutra"
-      const partes=mn[2].split(/\s+[—\-–|]\s+/);
-      linhasNumeradas.push({nome:partes[0].trim(),posto:(partes[1]||'').trim()});
-    }
-  });
-
-  // Primeira passada: coleta campos por rótulo (contexto global + registros)
-  let temFuncMarcado=false;
+  let viuFuncionario=false;
   linhas.forEach(l=>{
     const r=_achaRotulo(l);
     if(!r)return;
+    if(r.campo==='funcionario'){viuFuncionario=true;return;}
+    if(viuFuncionario)return; // depois do 1º funcionário já é conteúdo de bloco
     if(r.campo==='data')       global.data=_extraiData(r.valor)||global.data;
     if(r.campo==='solicitante')global.solicitante=r.valor;
     if(r.campo==='motivo')     global.motivo=r.valor;
@@ -161,55 +163,94 @@ function parseWhatsApp(texto){
     if(r.campo==='turno')      global.turno=r.valor;
     if(r.campo==='cobertura')  global.cobertura=r.valor;
     if(r.campo==='posto')      global.posto=r.valor;
-    if(r.campo==='funcionario'){
-      temFuncMarcado=true;
-      // se vier "Luis, Marcelo, Laércio" separa
+  });
+  if(!global.data)global.data=_extraiData(linhas.slice(0,3).join(' '))||'';
+
+  // ----- lista numerada? -----
+  const numeradas=[];
+  linhas.forEach(l=>{
+    const nl=_limpa(l);
+    const mn=/^(\d{1,2})[\.\)\-]\s*(.+)$/.exec(nl);
+    if(mn && !/:/.test(mn[2])){
+      const partes=mn[2].split(/\s+[—\-–|]\s+/);
+      numeradas.push({funcionario:partes[0].trim(),posto:(partes[1]||'').trim()});
     }
   });
-  // data também pode estar solta na 1ª linha (EXTRA: 24/08 - SEGUNDA)
-  if(!global.data){global.data=_extraiData(linhas.slice(0,3).join(' '))||'';}
 
-  // Monta lista de funcionários
-  let funcionarios=[];
-  if(linhasNumeradas.length){
-    funcionarios=linhasNumeradas.map(x=>({nome:x.nome,posto:x.posto||global.posto}));
-  }else{
-    // procura rótulos de funcionário (podem ser vários)
-    linhas.forEach(l=>{
-      const r=_achaRotulo(l);
-      if(r&&r.campo==='funcionario'&&r.valor){
-        // pode ter vários nomes separados por vírgula/e
-        r.valor.split(/\s*(?:,|;|\/|\se\s)\s*/).forEach(nome=>{
-          if(nome.trim())funcionarios.push({nome:nome.trim(),posto:global.posto});
-        });
-      }
-    });
-  }
-  if(!funcionarios.length)funcionarios=[{nome:'',posto:global.posto}];
-
-  const turno=_extraiTurno(global.turno);
-  let tipos=_extraiTipos(global.cobertura);
-  // se não houve rótulo de cobertura mas o texto menciona "EXTRA", assume Extra
-  if(!tipos.length){
-    const cab=linhas.slice(0,2).join(' ').toLowerCase();
-    tipos=_extraiTipos(cab);
-    if(!tipos.length && /extra/.test(texto.toLowerCase())) tipos=['Extra'];
-  }
-  funcionarios.forEach(f=>{
+  const registros=[];
+  const mk=(campos)=>{
+    const turno=_extraiTurno(campos.turno||global.turno);
+    let tipos=_extraiTipos(campos.cobertura||global.cobertura);
+    if(!tipos.length){
+      const cab=linhas.slice(0,2).join(' ').toLowerCase();
+      tipos=_extraiTipos(cab);
+      if(!tipos.length && /extra/.test(texto.toLowerCase()))tipos=['Extra'];
+    }
+    const data=campos.data||global.data;
     registros.push({
-      data:global.data,
-      dia_semana:diaSemanaDeISO(global.data),
-      solicitante:global.solicitante,
-      posto:f.posto||global.posto,
-      funcionario:f.nome,
-      funcao:global.funcao,
+      data,
+      dia_semana:diaSemanaDeISO(data),
+      solicitante:campos.solicitante||global.solicitante,
+      posto:campos.posto||global.posto,
+      funcionario:campos.funcionario||'',
+      funcao:campos.funcao||global.funcao,
       entrada:turno.entrada,
       saida:turno.saida,
-      turno_texto:global.turno,
-      tipos:tipos,
-      motivo:global.motivo
+      turno_texto:campos.turno||global.turno,
+      tipos,
+      motivo:campos.motivo||global.motivo
     });
+  };
+
+  if(numeradas.length){
+    numeradas.forEach(n=>mk(n));
+    return registros;
+  }
+
+  // ----- divide em blocos por separadores OU por reinício de rótulo -----
+  // separadores: linha só com _, -, =, • ou vazia
+  const ehSeparador=l=>{const t=_limpa(l);return t===''||/^[_\-=•*.\s]{3,}$/.test(t);};
+
+  let blocos=[];let atual=[];
+  linhas.forEach(l=>{
+    if(ehSeparador(l)){ if(atual.length){blocos.push(atual);atual=[];} }
+    else atual.push(l);
   });
+  if(atual.length)blocos.push(atual);
+
+  // Se um "bloco" tiver 2+ funcionários (sem separadores no meio), subdivide
+  // sempre que reencontrar o rótulo FUNCIONÁRIO ou SOLICITANTE.
+  const subdividir=(bloco)=>{
+    const partes=[];let cur=[];let jaTemFunc=false,jaTemSolic=false;
+    bloco.forEach(l=>{
+      const r=_achaRotulo(l);
+      const inicioNovo = r && ((r.campo==='funcionario'&&jaTemFunc)||(r.campo==='solicitante'&&jaTemSolic));
+      if(inicioNovo && cur.length){partes.push(cur);cur=[];jaTemFunc=false;jaTemSolic=false;}
+      if(r&&r.campo==='funcionario')jaTemFunc=true;
+      if(r&&r.campo==='solicitante')jaTemSolic=true;
+      cur.push(l);
+    });
+    if(cur.length)partes.push(cur);
+    return partes;
+  };
+
+  let blocosFinais=[];
+  blocos.forEach(b=>{subdividir(b).forEach(sb=>blocosFinais.push(sb));});
+
+  // extrai campos de cada bloco
+  blocosFinais.forEach(bloco=>{
+    const campos={};
+    bloco.forEach(l=>{
+      const r=_achaRotulo(l);if(!r)return;
+      if(r.campo==='data')campos.data=_extraiData(r.valor);
+      else campos[r.campo]=r.valor;
+    });
+    // só cria registro se o bloco tiver algo útil (funcionário ou posto)
+    if(campos.funcionario||campos.posto)mk(campos);
+  });
+
+  // fallback: nada identificado -> tenta um único registro pelo global
+  if(!registros.length && (global.posto||global.solicitante))mk({});
   return registros;
 }
 

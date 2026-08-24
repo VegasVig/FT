@@ -16,12 +16,13 @@
 window.PAGINA='importar';
 montarShell();
 const C=document.getElementById('conteudoPagina');
-let encontrados=[]; let funcs=[],postos=[];
+let encontrados=[]; let funcs=[],postos=[],solicitantes=[];
 
 async function init(){
   const s=Sessao.get().token;
   funcs=((await VegasAPI.listar('func',s)).dados)||[];
   postos=((await VegasAPI.listar('postos',s)).dados)||[];
+  solicitantes=((await VegasAPI.listar('solic',s)).dados)||[];
   render();
 }
 
@@ -29,7 +30,7 @@ function render(){
   C.innerHTML=`
   <div class="card">
     <div class="card-tit">📥 Importar mensagem do WhatsApp</div>
-    <div class="info-box mb">Cole a mensagem recebida (um ou vários funcionários). O sistema separa cada funcionário em um registro. Depois você confere e ajusta antes de salvar.</div>
+    <div class="info-box mb">Cole a mensagem recebida (um ou vários funcionários). O sistema separa cada funcionário em um registro e, ao confirmar, cadastra automaticamente os funcionários, postos e solicitantes que ainda não existirem. Você confere e ajusta antes de salvar.</div>
     <div class="campo">
       <label>Cole o texto aqui</label>
       <textarea id="txt" style="min-height:180px" placeholder="Ex.:
@@ -125,6 +126,27 @@ async function confirmarTodos(){
   if(invalidos.length){toast('Preencha data, posto e funcionário em todos os registros.','erro');return;}
   carregando(true,'Cadastrando registros…');
   const s=Sessao.get();
+
+  // --- cadastra automaticamente postos, funcionários e solicitantes novos ---
+  const novoCad={postos:0,func:0,solic:0};
+  const existe=(lista,nome)=>lista.some(x=>(x.nome||'').trim().toLowerCase()===(nome||'').trim().toLowerCase());
+
+  const postosNovos=[...new Set(encontrados.map(r=>(r.posto||'').trim()).filter(Boolean))].filter(n=>!existe(postos,n));
+  for(const nome of postosNovos){
+    await VegasAPI.criar('postos',{id:novoId(),nome,codigo:'',cliente:'',endereco:'',supervisor:'',status:'Ativo',observacoes:'',criado_em:agoraISO()},s.token);
+    postos.push({nome});novoCad.postos++;
+  }
+  const funcNovos=[...new Map(encontrados.filter(r=>(r.funcionario||'').trim()).map(r=>[(r.funcionario||'').trim().toLowerCase(),{nome:(r.funcionario||'').trim(),funcao:r.funcao||'Vigilante'}])).values()].filter(f=>!existe(funcs,f.nome));
+  for(const f of funcNovos){
+    await VegasAPI.criar('func',{id:novoId(),nome:f.nome,matricula:'',cpf:'',funcao:f.funcao,telefone:'',admissao:'',status:'Ativo',observacoes:'',criado_em:agoraISO()},s.token);
+    funcs.push({nome:f.nome});novoCad.func++;
+  }
+  const solicNovos=[...new Set(encontrados.map(r=>(r.solicitante||'').trim()).filter(Boolean))].filter(n=>!existe(solicitantes,n));
+  for(const nome of solicNovos){
+    await VegasAPI.criar('solic',{id:novoId(),nome,cargo:'',telefone:'',email:'',status:'Ativo',criado_em:agoraISO()},s.token);
+    solicitantes.push({nome});novoCad.solic++;
+  }
+
   // pega lista atual p/ numeração sequencial
   const atuais=((await VegasAPI.listar('extras',s.token)).dados)||[];
   const novos=[];let seqBase=atuais.slice();
@@ -144,10 +166,16 @@ async function confirmarTodos(){
     novos.push(reg);
   });
   await VegasAPI.criarVarios('extras',novos,s.token);
-  await auditar('Importou '+novos.length+' registro(s) via texto','', novos.map(n=>n.numero).join(', '));
+  await auditar('Importou '+novos.length+' registro(s) via texto','', 'Extras: '+novos.map(n=>n.numero).join(', ')+(novoCad.func||novoCad.postos||novoCad.solic?` | Novos cadastros — funcionários:${novoCad.func}, postos:${novoCad.postos}, solicitantes:${novoCad.solic}`:''));
   carregando(false);
-  toast(novos.length+' registro(s) cadastrado(s) com sucesso.','ok');
-  setTimeout(()=>location.href='extras.html',900);
+  let msg=novos.length+' registro(s) cadastrado(s).';
+  const extrasCad=[];
+  if(novoCad.func)extrasCad.push(novoCad.func+' funcionário(s)');
+  if(novoCad.postos)extrasCad.push(novoCad.postos+' posto(s)');
+  if(novoCad.solic)extrasCad.push(novoCad.solic+' solicitante(s)');
+  if(extrasCad.length)msg+=' Cadastrados também: '+extrasCad.join(', ')+'.';
+  toast(msg,'ok');
+  setTimeout(()=>location.href='extras.html',1400);
 }
 
 init();

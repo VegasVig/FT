@@ -29,9 +29,18 @@ function _ss(){var id=_props().getProperty('SHEET_ID');return id?SpreadsheetApp.
 function _aba(colecao){
   var nome=ABAS[colecao];if(!nome)throw new Error('coleção inválida');
   var ss=_ss();var sh=ss.getSheetByName(nome);
-  if(!sh){sh=ss.insertSheet(nome);sh.appendRow(COLUNAS[colecao]);sh.setFrozenRows(1);}
-  if(sh.getLastRow()===0){sh.appendRow(COLUNAS[colecao]);sh.setFrozenRows(1);}
+  if(!sh){sh=ss.insertSheet(nome);sh.appendRow(COLUNAS[colecao]);sh.setFrozenRows(1);_formatarTexto(sh,colecao);}
+  if(sh.getLastRow()===0){sh.appendRow(COLUNAS[colecao]);sh.setFrozenRows(1);_formatarTexto(sh,colecao);}
   return sh;
+}
+/* Força as colunas de data/hora a formato TEXTO, para o Sheets não
+   converter "22:00" em data/hora (causa do bug 1899-12-30T...) */
+function _formatarTexto(sh,colecao){
+  var cols=COLUNAS[colecao];
+  var alvo=['data','entrada','saida','criado_em','aprovado_em','recusado_em','pago_em','admissao','quando','horas_texto'];
+  cols.forEach(function(c,i){
+    if(alvo.indexOf(c)>=0){ sh.getRange(1,i+1,1000,1).setNumberFormat('@'); }
+  });
 }
 function _tokenValido(t){return t && t===_props().getProperty('SESSION_TOKEN');}
 function _novoToken(){var t=Utilities.getUuid().replace(/-/g,'');_props().setProperty('SESSION_TOKEN',t);return t;}

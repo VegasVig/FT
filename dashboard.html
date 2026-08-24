@@ -70,7 +70,7 @@ function render(dados){
         <td data-l="Funcionário">${esc(r.funcionario)}</td>
         <td data-l="Posto">${esc(r.posto)}</td>
         <td data-l="Função">${esc(r.funcao)}</td>
-        <td data-l="Horário">${esc(r.entrada)}–${esc(r.saida)}</td>
+        <td data-l="Horário">${horaBR(r.entrada)}–${horaBR(r.saida)}</td>
         <td data-l="Motivo">${esc(r.motivo)}</td>
         <td data-l="Status">${badgeStatus(r.status)}</td></tr>`;
     });

@@ -37,7 +37,7 @@ function pdfRegistro(reg,baixar){
     ['Data',dataBRQualquer(reg.data)],['Dia da semana',reg.dia_semana],
     ['Solicitante',reg.solicitante],['Posto',reg.posto],
     ['Funcionário',reg.funcionario],['Função',reg.funcao],
-    ['Entrada',reg.entrada],['Saída',reg.saida],
+    ['Entrada',horaBR(reg.entrada)],['Saída',horaBR(reg.saida)],
     ['Horas',reg.horas_texto||(reg.horas+'h')],['Atravessa meia-noite',reg.vira_dia?'Sim':'Não'],
     ['Tipo de cobertura',(reg.tipos||[]).join(', ')],['Motivo',reg.motivo],
     ['Valor estimado',reg.valor?('R$ '+reg.valor):'—'],['Valor aprovado',reg.valor_aprovado?('R$ '+reg.valor_aprovado):'—'],
@@ -104,7 +104,7 @@ function pdfRelatorio(registros,meta,baixar){
     if(i%2===0){doc.setFillColor(...COR.cinza);doc.rect(MX,y,PW-2*MX,6.5,'F');}
     let x=MX+2;
     const vals=[r.numero,dataBRQualquer(r.data),r.funcionario,r.funcao,r.posto,
-      (r.entrada||'')+'-'+(r.saida||''),(r.horas_texto||(r.horas||0)+'h'),(r.tipos||[]).join(','),r.status,(r.valor?('R$'+r.valor):'—')];
+      (horaBR(r.entrada)||'')+'-'+(horaBR(r.saida)||''),(r.horas_texto||(r.horas||0)+'h'),(r.tipos||[]).join(','),r.status,(r.valor?('R$'+r.valor):'—')];
     cols.forEach((c,ci)=>{const txt=doc.splitTextToSize(String(vals[ci]==null?'':vals[ci]),c.w-2)[0]||'';doc.text(txt,x,y+4.4);x+=c.w;});
     y+=6.5;
     totalHoras+=(+r.horas||0);
