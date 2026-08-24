@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solicitantes — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='solicitantes';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let LISTA=[];let q='';let editId=null;
+async function init(){carregando(true);LISTA=((await VegasAPI.listar('solic',Sessao.get().token)).dados)||[];carregando(false);render();}
+function render(){
+  C.innerHTML=`<div class="card"><div class="card-tit">👤 Solicitantes
+    <div class="acoes"><button class="btn btn-primario btn-sm" onclick="abrir()">➕ Novo solicitante</button></div></div>
+    <div class="campo mb"><input id="q" placeholder="Pesquisar nome, cargo…" value="${esc(q)}"></div><div id="tab"></div></div>`;
+  document.getElementById('q').addEventListener('input',e=>{q=e.target.value;renderTab();});renderTab();
+}
+function renderTab(){
+  const lista=LISTA.filter(x=>{if(!q)return true;return [x.nome,x.cargo,x.email,x.telefone].join(' ').toLowerCase().includes(q.toLowerCase());});
+  let h=`<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nome</th><th>Cargo</th><th>Telefone</th><th>E-mail</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  if(!lista.length)h+=`<tr><td colspan="6"><div class="vazio"><div class="ic">👤</div>Nenhum solicitante.</div></td></tr>`;
+  lista.forEach(x=>h+=`<tr>
+    <td data-l="Nome">${esc(x.nome)}</td><td data-l="Cargo">${esc(x.cargo)}</td><td data-l="Telefone">${esc(x.telefone)}</td>
+    <td data-l="E-mail">${esc(x.email)}</td>
+    <td data-l="Status"><span class="badge ${x.status==='Inativo'?'b-recusado':'b-aprovado'}">${esc(x.status||'Ativo')}</span></td>
+    <td data-l="Ações"><div class="acoes-linha"><button class="btn-icone" onclick="abrir('${x.id}')">✏️</button><button class="btn-icone" onclick="excluir('${x.id}')">🗑</button></div></td></tr>`);
+  h+=`</tbody></table></div>`;document.getElementById('tab').innerHTML=h;
+}
+function abrir(id){
+  editId=id||null;const x=id?LISTA.find(y=>y.id===id):{};
+  let m=document.getElementById('modalS');if(!m){m=document.createElement('div');m.id='modalS';m.className='modal';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-card"><div class="modal-head"><h3>${id?'Editar':'Novo'} solicitante</h3><button class="fechar-x" onclick="fecha()">×</button></div>
+    <div class="modal-body"><div class="grid">
+      <div class="campo col-2"><label>Nome <span class="req">*</span></label><input id="nome" value="${esc(x.nome)}"></div>
+      <div class="campo"><label>Cargo</label><input id="cargo" value="${esc(x.cargo)}"></div>
+      <div class="campo"><label>Telefone</label><input id="telefone" value="${esc(x.telefone)}"></div>
+      <div class="campo"><label>E-mail</label><input id="email" value="${esc(x.email)}"></div>
+      <div class="campo"><label>Status</label><select id="status"><option ${x.status!=='Inativo'?'selected':''}>Ativo</option><option ${x.status==='Inativo'?'selected':''}>Inativo</option></select></div>
+    </div></div>
+    <div class="modal-foot"><button class="btn btn-neutro btn-sm" onclick="fecha()">Cancelar</button><button class="btn btn-primario btn-sm" onclick="salvar()">Salvar</button></div></div>`;
+  m.classList.add('on');m.onclick=e=>{if(e.target===m)fecha();};
+}
+function fecha(){const m=document.getElementById('modalS');if(m)m.classList.remove('on');}
+async function salvar(){
+  const g=id=>document.getElementById(id).value;if(!g('nome').trim()){toast('Informe o nome.','erro');return;}
+  const obj={nome:g('nome'),cargo:g('cargo'),telefone:g('telefone'),email:g('email'),status:g('status')};
+  carregando(true);const s=Sessao.get();
+  if(editId)await VegasAPI.atualizar('solic',editId,obj,s.token);else await VegasAPI.criar('solic',{id:novoId(),...obj,criado_em:agoraISO()},s.token);
+  LISTA=((await VegasAPI.listar('solic',s.token)).dados)||[];carregando(false);toast('Salvo.','ok');fecha();renderTab();
+}
+async function excluir(id){const x=LISTA.find(y=>y.id===id);if(!confirm('Excluir '+x.nome+'?'))return;carregando(true);await VegasAPI.excluir('solic',id,Sessao.get().token);LISTA=LISTA.filter(y=>y.id!==id);carregando(false);toast('Excluído.','ok');renderTab();}
+init();
+</script>
+</body>
+</html>

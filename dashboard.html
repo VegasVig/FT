@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Vegas Folgas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='dashboard';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+
+async function init(){
+  carregando(true,'Carregando dashboard…');
+  const r=await VegasAPI.listar('extras',Sessao.get().token);
+  const dados=(r&&r.dados)||[];
+  carregando(false);
+  render(dados);
+}
+
+function render(dados){
+  const hoje=hojeISO();
+  const mesAtual=hoje.slice(0,7);
+  const soData=r=>String(r.data||'').slice(0,10);
+
+  const deHoje=dados.filter(r=>soData(r)===hoje);
+  const doMes=dados.filter(r=>soData(r).slice(0,7)===mesAtual);
+  const folgasTrab=dados.filter(r=>(r.tipos||[]).includes('Folga trabalhada'));
+  const coberturas=dados.filter(r=>(r.tipos||[]).includes('Cobertura')||(r.tipos||[]).includes('Substituição'));
+  const aguardando=dados.filter(r=>r.status==='Aguardando aprovação');
+  const aprovados=dados.filter(r=>r.status==='Aprovado');
+  const recusados=dados.filter(r=>r.status==='Recusado');
+  const totalHoras=dados.reduce((s,r)=>s+(+r.horas||0),0);
+  const totalPagar=dados.filter(r=>['Aprovado','Aguardando aprovação'].includes(r.status))
+    .reduce((s,r)=>s+(parseFloat(String(r.valor||'0').replace(',','.'))||0),0);
+
+  const stat=(n,l,cls,ic)=>`<div class="stat ${cls||''}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+
+  let html=`<div class="stats">
+    ${stat(deHoje.length,'Extras de hoje','')}
+    ${stat(doMes.length,'Extras do mês','prata')}
+    ${stat(folgasTrab.length,'Folgas trabalhadas','')}
+    ${stat(coberturas.length,'Coberturas','')}
+    ${stat(aguardando.length,'Aguardando aprovação','aviso')}
+    ${stat(aprovados.length,'Aprovados','ok')}
+    ${stat(recusados.length,'Recusados','erro')}
+    ${stat(totalHoras.toFixed(1)+'h','Total de horas','info')}
+    ${stat('R$ '+totalPagar.toFixed(2),'Estimado a pagar','info')}
+  </div>`;
+
+  // Extras de hoje
+  html+=`<div class="card"><div class="card-tit">Extras de hoje
+    <div class="acoes"><a class="btn btn-prata btn-sm" href="novo.html">➕ Novo</a>
+    <a class="btn btn-neutro btn-sm" href="importar.html">📥 Importar</a></div></div>`;
+  if(!deHoje.length){
+    html+=`<div class="vazio"><div class="ic">📭</div>Nenhum extra registrado para hoje.</div>`;
+  }else{
+    html+=`<div class="tabela-wrap"><table class="responsiva"><thead><tr>
+      <th>Nº</th><th>Funcionário</th><th>Posto</th><th>Função</th><th>Horário</th><th>Motivo</th><th>Status</th></tr></thead><tbody>`;
+    deHoje.forEach(r=>{
+      html+=`<tr onclick="location.href='extras.html?q=${encodeURIComponent(r.numero)}'" style="cursor:pointer">
+        <td data-l="Nº"><span class="num-reg">${esc(r.numero)}</span></td>
+        <td data-l="Funcionário">${esc(r.funcionario)}</td>
+        <td data-l="Posto">${esc(r.posto)}</td>
+        <td data-l="Função">${esc(r.funcao)}</td>
+        <td data-l="Horário">${esc(r.entrada)}–${esc(r.saida)}</td>
+        <td data-l="Motivo">${esc(r.motivo)}</td>
+        <td data-l="Status">${badgeStatus(r.status)}</td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  }
+  html+=`</div>`;
+
+  // mini gráfico: extras por dia (últimos 7)
+  html+=graficoUltimos7(dados);
+
+  C.innerHTML=html;
+}
+
+function graficoUltimos7(dados){
+  const dias=[];const hoje=new Date();
+  for(let i=6;i>=0;i--){const d=new Date(hoje);d.setDate(d.getDate()-i);dias.push(d);}
+  const cont=dias.map(d=>{const iso=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    return{rot:pad(d.getDate())+'/'+pad(d.getMonth()+1),n:dados.filter(r=>String(r.data||'').slice(0,10)===iso).length};});
+  const max=Math.max(1,...cont.map(c=>c.n));
+  let h=`<div class="card"><div class="card-tit">Extras nos últimos 7 dias</div>`;
+  cont.forEach(c=>{h+=`<div class="barra-linha"><div class="rot">${c.rot}</div><div class="trilho"><div class="fill" style="width:${Math.max(6,c.n/max*100)}%">${c.n}</div></div></div>`;});
+  h+=`</div>`;return h;
+}
+init();
+</script>
+</body>
+</html>

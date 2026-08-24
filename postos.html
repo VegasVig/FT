@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Postos — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='postos';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let LISTA=[];let q='';let editId=null;
+async function init(){carregando(true);LISTA=((await VegasAPI.listar('postos',Sessao.get().token)).dados)||[];carregando(false);render();}
+function render(){
+  C.innerHTML=`<div class="card"><div class="card-tit">🏢 Postos
+    <div class="acoes"><button class="btn btn-primario btn-sm" onclick="abrir()">➕ Novo posto</button></div></div>
+    <div class="campo mb"><input id="q" placeholder="Pesquisar posto, código ou cliente…" value="${esc(q)}"></div>
+    <div id="tab"></div></div>`;
+  document.getElementById('q').addEventListener('input',e=>{q=e.target.value;renderTab();});renderTab();
+}
+function renderTab(){
+  const lista=LISTA.filter(p=>{if(!q)return true;return [p.nome,p.codigo,p.cliente,p.endereco].join(' ').toLowerCase().includes(q.toLowerCase());});
+  let h=`<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Posto</th><th>Código</th><th>Cliente</th><th>Endereço</th><th>Supervisor</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  if(!lista.length)h+=`<tr><td colspan="7"><div class="vazio"><div class="ic">🏢</div>Nenhum posto.</div></td></tr>`;
+  lista.forEach(p=>h+=`<tr>
+    <td data-l="Posto">${esc(p.nome)}</td><td data-l="Código">${esc(p.codigo)}</td><td data-l="Cliente">${esc(p.cliente)}</td>
+    <td data-l="Endereço">${esc(p.endereco)}</td><td data-l="Supervisor">${esc(p.supervisor)}</td>
+    <td data-l="Status"><span class="badge ${p.status==='Inativo'?'b-recusado':'b-aprovado'}">${esc(p.status||'Ativo')}</span></td>
+    <td data-l="Ações"><div class="acoes-linha"><button class="btn-icone" onclick="abrir('${p.id}')">✏️</button><button class="btn-icone" onclick="excluir('${p.id}')">🗑</button></div></td></tr>`);
+  h+=`</tbody></table></div>`;document.getElementById('tab').innerHTML=h;
+}
+function abrir(id){
+  editId=id||null;const p=id?LISTA.find(x=>x.id===id):{};
+  let m=document.getElementById('modalP');if(!m){m=document.createElement('div');m.id='modalP';m.className='modal';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-card"><div class="modal-head"><h3>${id?'Editar':'Novo'} posto</h3><button class="fechar-x" onclick="fecha()">×</button></div>
+    <div class="modal-body"><div class="grid">
+      <div class="campo col-2"><label>Nome do posto <span class="req">*</span></label><input id="nome" value="${esc(p.nome)}"></div>
+      <div class="campo"><label>Código</label><input id="codigo" value="${esc(p.codigo)}"></div>
+      <div class="campo"><label>Cliente</label><input id="cliente" value="${esc(p.cliente)}"></div>
+      <div class="campo col-2"><label>Endereço</label><input id="endereco" value="${esc(p.endereco)}"></div>
+      <div class="campo"><label>Supervisor responsável</label><input id="supervisor" value="${esc(p.supervisor)}"></div>
+      <div class="campo"><label>Status</label><select id="status"><option ${p.status!=='Inativo'?'selected':''}>Ativo</option><option ${p.status==='Inativo'?'selected':''}>Inativo</option></select></div>
+      <div class="campo col-2"><label>Observações</label><textarea id="obs">${esc(p.observacoes)}</textarea></div>
+    </div></div>
+    <div class="modal-foot"><button class="btn btn-neutro btn-sm" onclick="fecha()">Cancelar</button><button class="btn btn-primario btn-sm" onclick="salvar()">Salvar</button></div></div>`;
+  m.classList.add('on');m.onclick=e=>{if(e.target===m)fecha();};
+}
+function fecha(){const m=document.getElementById('modalP');if(m)m.classList.remove('on');}
+async function salvar(){
+  const g=id=>document.getElementById(id).value;if(!g('nome').trim()){toast('Informe o nome do posto.','erro');return;}
+  const obj={nome:g('nome'),codigo:g('codigo'),cliente:g('cliente'),endereco:g('endereco'),supervisor:g('supervisor'),status:g('status'),observacoes:g('obs')};
+  carregando(true);const s=Sessao.get();
+  if(editId)await VegasAPI.atualizar('postos',editId,obj,s.token);else await VegasAPI.criar('postos',{id:novoId(),...obj,criado_em:agoraISO()},s.token);
+  LISTA=((await VegasAPI.listar('postos',s.token)).dados)||[];carregando(false);toast('Salvo.','ok');fecha();renderTab();
+}
+async function excluir(id){const p=LISTA.find(x=>x.id===id);if(!confirm('Excluir '+p.nome+'?'))return;carregando(true);await VegasAPI.excluir('postos',id,Sessao.get().token);LISTA=LISTA.filter(x=>x.id!==id);carregando(false);toast('Excluído.','ok');renderTab();}
+init();
+</script>
+</body>
+</html>

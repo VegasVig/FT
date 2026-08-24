@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folgas / Extras — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="pdf.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='extras';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let TODOS=[],pagina=1;const POR=12;let atual=null;
+const F={q:qs('q'),di:'',df:'',func:'',posto:'',funcao:'',solic:'',status:'',tipo:'',motivo:''};
+
+async function init(){
+  carregando(true,'Carregando registros…');
+  TODOS=((await VegasAPI.listar('extras',Sessao.get().token)).dados)||[];
+  carregando(false);
+  render();
+}
+
+function render(){
+  const postos=[...new Set(TODOS.map(r=>r.posto).filter(Boolean))].sort();
+  const funcion=[...new Set(TODOS.map(r=>r.funcionario).filter(Boolean))].sort();
+  const solic=[...new Set(TODOS.map(r=>r.solicitante).filter(Boolean))].sort();
+  const sel=(lista,v)=>['<option value="">Todos</option>'].concat(lista.map(x=>`<option ${x===v?'selected':''}>${esc(x)}</option>`)).join('');
+
+  C.innerHTML=`
+  <div class="filtros">
+    <div class="linha">
+      <div class="campo"><label>Buscar</label><input id="fq" value="${esc(F.q)}" placeholder="Funcionário, posto, nº…"></div>
+      <div class="campo"><label>Data inicial</label><input type="date" id="fdi" value="${F.di}"></div>
+      <div class="campo"><label>Data final</label><input type="date" id="fdf" value="${F.df}"></div>
+      <div class="campo"><label>Funcionário</label><select id="ffunc">${sel(funcion,F.func)}</select></div>
+      <div class="campo"><label>Posto</label><select id="fposto">${sel(postos,F.posto)}</select></div>
+      <div class="campo"><label>Função</label><select id="ffuncao">${sel(VEGAS_CONFIG.FUNCOES,F.funcao)}</select></div>
+      <div class="campo"><label>Solicitante</label><select id="fsolic">${sel(solic,F.solic)}</select></div>
+      <div class="campo"><label>Status</label><select id="fstatus">${sel(VEGAS_CONFIG.STATUS,F.status)}</select></div>
+      <div class="campo"><label>Tipo</label><select id="ftipo">${sel(VEGAS_CONFIG.TIPOS_COBERTURA,F.tipo)}</select></div>
+      <div class="campo"><label>Motivo</label><select id="fmotivo">${sel(VEGAS_CONFIG.MOTIVOS,F.motivo)}</select></div>
+    </div>
+    <div class="botoes">
+      <button class="btn btn-primario btn-sm" onclick="aplicar()">Filtrar</button>
+      <button class="btn btn-neutro btn-sm" onclick="limpar()">Limpar filtros</button>
+      <button class="btn btn-neutro btn-sm" onclick="exportar()">Exportar CSV</button>
+      <a class="btn btn-prata btn-sm" href="novo.html">➕ Novo</a>
+      <a class="btn btn-neutro btn-sm" href="importar.html">📥 Importar</a>
+    </div>
+  </div>
+  <div id="lista"></div>`;
+  ['fq','fdi','fdf','ffunc','fposto','ffuncao','fsolic','fstatus','ftipo','fmotivo'].forEach(id=>{
+    const el=document.getElementById(id);
+    el.addEventListener(id==='fq'?'input':'change',()=>{if(id==='fq'){F.q=el.value;pagina=1;renderLista();}});
+  });
+  renderLista();
+}
+
+function filtrar(){
+  return TODOS.filter(r=>{
+    if(F.q){const alvo=[r.numero,r.funcionario,r.posto,r.solicitante,r.motivo].join(' ').toLowerCase();if(!alvo.includes(F.q.toLowerCase()))return false;}
+    const d=String(r.data||'').slice(0,10);
+    if(F.di&&d<F.di)return false;
+    if(F.df&&d>F.df)return false;
+    if(F.func&&r.funcionario!==F.func)return false;
+    if(F.posto&&r.posto!==F.posto)return false;
+    if(F.funcao&&r.funcao!==F.funcao)return false;
+    if(F.solic&&r.solicitante!==F.solic)return false;
+    if(F.status&&r.status!==F.status)return false;
+    if(F.tipo&&!(r.tipos||[]).includes(F.tipo))return false;
+    if(F.motivo&&r.motivo!==F.motivo)return false;
+    return true;
+  });
+}
+function aplicar(){
+  F.q=document.getElementById('fq').value;F.di=document.getElementById('fdi').value;F.df=document.getElementById('fdf').value;
+  F.func=document.getElementById('ffunc').value;F.posto=document.getElementById('fposto').value;F.funcao=document.getElementById('ffuncao').value;
+  F.solic=document.getElementById('fsolic').value;F.status=document.getElementById('fstatus').value;F.tipo=document.getElementById('ftipo').value;F.motivo=document.getElementById('fmotivo').value;
+  pagina=1;renderLista();
+}
+function limpar(){Object.keys(F).forEach(k=>F[k]='');render();}
+
+function renderLista(){
+  const lista=filtrar();
+  const totalPag=Math.max(1,Math.ceil(lista.length/POR));if(pagina>totalPag)pagina=totalPag;
+  const pag=lista.slice((pagina-1)*POR,(pagina-1)*POR+POR);
+  let html=`<div class="tabela-wrap"><table class="responsiva"><thead><tr>
+    <th>Nº</th><th>Data</th><th>Funcionário</th><th>Posto</th><th>Função</th><th>Horário</th><th>Horas</th><th>Motivo</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  if(!pag.length)html+=`<tr><td colspan="10"><div class="vazio"><div class="ic">📭</div>Nenhum registro encontrado.</div></td></tr>`;
+  pag.forEach(r=>{
+    html+=`<tr>
+      <td data-l="Nº"><span class="num-reg">${esc(r.numero)}</span></td>
+      <td data-l="Data">${dataBRQualquer(r.data)}<br><span class="txt-suave" style="font-size:.72rem">${esc(r.dia_semana||'')}</span></td>
+      <td data-l="Funcionário">${esc(r.funcionario)}</td>
+      <td data-l="Posto">${esc(r.posto)}</td>
+      <td data-l="Função">${esc(r.funcao)}</td>
+      <td data-l="Horário">${esc(r.entrada)}–${esc(r.saida)}${r.vira_dia?' <span title="vira o dia">🌙</span>':''}</td>
+      <td data-l="Horas" class="txt-mono">${esc(r.horas_texto||(r.horas+'h'))}</td>
+      <td data-l="Motivo">${esc(r.motivo)}</td>
+      <td data-l="Status">${badgeStatus(r.status)}</td>
+      <td data-l="Ações"><div class="acoes-linha">
+        <button class="btn-icone" title="Ver" onclick="abrir('${r.id}')">👁</button>
+        <button class="btn-icone" title="Editar" onclick="location.href='novo.html?id=${r.id}'">✏️</button>
+        <button class="btn-icone" title="PDF" onclick="pdf1('${r.id}')">📄</button>
+        <button class="btn-icone" title="Duplicar" onclick="duplicar('${r.id}')">⧉</button>
+        <button class="btn-icone" title="Excluir" onclick="excluir('${r.id}')">🗑</button>
+      </div></td></tr>`;
+  });
+  html+=`</tbody></table></div><div class="paginacao" id="pg"></div>`;
+  document.getElementById('lista').innerHTML=html;
+  // paginação
+  const pg=document.getElementById('pg');
+  if(totalPag>1){
+    const b=(t,p,dis,on)=>{const x=document.createElement('button');x.textContent=t;x.disabled=dis;if(on)x.classList.add('on');x.onclick=()=>{pagina=p;renderLista();};return x;};
+    pg.appendChild(b('‹',pagina-1,pagina===1));
+    for(let i=1;i<=totalPag;i++)pg.appendChild(b(i,i,false,i===pagina));
+    pg.appendChild(b('›',pagina+1,pagina===totalPag));
+  }
+  // se busca por q trouxe 1 resultado exato via link, abre
+  if(F.q&&qs('q')&&lista.length===1){/* opcional */}
+}
+
+/* ---------- Modal ---------- */
+function abrir(id){
+  atual=TODOS.find(r=>r.id===id);if(!atual)return;const r=atual;
+  const it=(k,v)=>`<div class="det-item" style="background:var(--cinza-50);border-radius:8px;padding:9px 12px"><div style="font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;color:var(--cinza-400);font-weight:700">${k}</div><div style="font-size:.9rem;margin-top:2px">${esc(v)||'—'}</div></div>`;
+  let modal=document.getElementById('modalDet');
+  if(!modal){modal=document.createElement('div');modal.id='modalDet';modal.className='modal';document.body.appendChild(modal);}
+  const podeAprovar=r.status==='Aguardando aprovação';
+  modal.innerHTML=`<div class="modal-card">
+    <div class="modal-head"><h3>${esc(r.numero)} — ${esc(r.funcionario)}</h3><button class="fechar-x" onclick="fecha()">×</button></div>
+    <div class="modal-body">
+      <div class="flex mb">${badgeStatus(r.status)} ${(r.tipos||[]).map(t=>`<span class="tipo-tag">${esc(t)}</span>`).join('')}</div>
+      <div class="grid grid-3" style="gap:10px">
+        ${it('Data',dataBRQualquer(r.data))}${it('Dia',r.dia_semana)}${it('Solicitante',r.solicitante)}
+        ${it('Posto',r.posto)}${it('Função',r.funcao)}${it('Horário',r.entrada+'–'+r.saida)}
+        ${it('Horas',r.horas_texto||(r.horas+'h'))}${it('Vira o dia',r.vira_dia?'Sim':'Não')}${it('Motivo',r.motivo)}
+        ${it('Valor estimado',r.valor?('R$ '+r.valor):'—')}${it('Valor aprovado',r.valor_aprovado?('R$ '+r.valor_aprovado):'—')}${it('Criado por',(r.criado_por||'—'))}
+      </div>
+      ${r.observacoes?`<div class="info-box mt">${esc(r.observacoes)}</div>`:''}
+      ${r.aprovado_por?`<div class="mt txt-suave" style="font-size:.8rem">✓ Aprovado por ${esc(r.aprovado_por)} em ${formatarDataHora(r.aprovado_em)}</div>`:''}
+      ${r.recusado_por?`<div class="dupla-alerta">✗ Recusado por ${esc(r.recusado_por)} — ${esc(r.motivo_recusa)}</div>`:''}
+      ${r.pago_por?`<div class="mt txt-suave" style="font-size:.8rem">💰 Pago (marcado por ${esc(r.pago_por)} em ${formatarDataHora(r.pago_em)})</div>`:''}
+
+      <div class="campo mt" id="boxAprov" ${podeAprovar?'':'style="display:none"'}>
+        <label>Valor aprovado (R$) — opcional</label>
+        <input id="valAprov" value="${esc(r.valor||'')}" placeholder="0,00" style="max-width:200px">
+      </div>
+    </div>
+    <div class="modal-foot">
+      ${podeAprovar?`<button class="btn btn-ok btn-sm" onclick="aprovar()">✓ Aprovar</button>
+      <button class="btn btn-perigo btn-sm" onclick="recusar()">✗ Recusar</button>`:''}
+      ${r.status==='Aprovado'?`<button class="btn btn-primario btn-sm" onclick="marcarPago()">💰 Marcar como pago</button>`:''}
+      <button class="btn btn-neutro btn-sm" onclick="pdf1('${r.id}')">📄 PDF</button>
+      <button class="btn btn-neutro btn-sm" onclick="imprimir1('${r.id}')">🖨 Imprimir</button>
+      <button class="btn btn-neutro btn-sm" onclick="location.href='novo.html?id=${r.id}'">✏️ Editar</button>
+    </div></div>`;
+  modal.classList.add('on');
+  modal.onclick=e=>{if(e.target===modal)fecha();};
+}
+function fecha(){const m=document.getElementById('modalDet');if(m)m.classList.remove('on');}
+
+async function mudarStatus(campos,msg){
+  carregando(true,'Atualizando…');
+  await VegasAPI.atualizar('extras',atual.id,campos,Sessao.get().token);
+  Object.assign(atual,campos);
+  carregando(false);toast(msg,'ok');fecha();
+  TODOS=((await VegasAPI.listar('extras',Sessao.get().token)).dados)||[];renderLista();
+}
+async function aprovar(){
+  const s=Sessao.get();const v=document.getElementById('valAprov').value;
+  await auditar('Aprovou registro',atual.numero,'');
+  mudarStatus({status:'Aprovado',aprovado_por:s.usuario,aprovado_em:agoraISO(),valor_aprovado:v},'Registro aprovado.');
+}
+async function recusar(){
+  const motivo=prompt('Motivo da recusa:');if(motivo===null)return;
+  const s=Sessao.get();await auditar('Recusou registro',atual.numero,motivo);
+  mudarStatus({status:'Recusado',recusado_por:s.usuario,recusado_em:agoraISO(),motivo_recusa:motivo},'Registro recusado.');
+}
+async function marcarPago(){
+  const s=Sessao.get();await auditar('Marcou como pago',atual.numero,'');
+  mudarStatus({status:'Pago',pago_por:s.usuario,pago_em:agoraISO()},'Marcado como pago.');
+}
+async function duplicar(id){
+  const r=TODOS.find(x=>x.id===id);if(!r)return;
+  const s=Sessao.get();const numero=proximoNumero(TODOS);
+  const novo={...r,id:novoId(),numero,status:'Rascunho',criado_por:s.usuario,criado_em:agoraISO(),
+    aprovado_por:'',aprovado_em:'',recusado_por:'',motivo_recusa:'',pago_por:'',pago_em:'',valor_aprovado:''};
+  carregando(true,'Duplicando…');await VegasAPI.criar('extras',novo,s.token);
+  await auditar('Duplicou registro',r.numero,'→ '+numero);
+  TODOS=((await VegasAPI.listar('extras',s.token)).dados)||[];carregando(false);toast('Registro duplicado ('+numero+').','ok');renderLista();
+}
+async function excluir(id){
+  const r=TODOS.find(x=>x.id===id);if(!r)return;
+  if(!confirm(`Excluir o registro ${r.numero} de ${r.funcionario}?`))return;
+  const s=Sessao.get();carregando(true,'Excluindo…');
+  await VegasAPI.excluir('extras',id,s.token);await auditar('Excluiu registro',r.numero,'');
+  TODOS=TODOS.filter(x=>x.id!==id);carregando(false);toast('Registro excluído.','ok');fecha();renderLista();
+}
+function pdf1(id){const r=TODOS.find(x=>x.id===id);if(r)pdfRegistro(r,true);}
+function imprimir1(id){const r=TODOS.find(x=>x.id===id);if(!r)return;const{doc}=pdfRegistro(r,false);doc.autoPrint&&doc.autoPrint();window.open(doc.output('bloburl'),'_blank');}
+function exportar(){
+  const lista=filtrar();
+  exportarCSV('extras_vegas.csv',
+    ['Nº','Data','Dia','Funcionário','Posto','Função','Entrada','Saída','Horas','Tipo','Motivo','Status','Valor'],
+    lista.map(r=>[r.numero,dataBRQualquer(r.data),r.dia_semana,r.funcionario,r.posto,r.funcao,r.entrada,r.saida,r.horas_texto||r.horas,(r.tipos||[]).join('/'),r.motivo,r.status,r.valor]));
+}
+init();
+</script>
+</body>
+</html>

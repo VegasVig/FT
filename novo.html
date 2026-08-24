@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Novo Extra — Vegas Folgas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='novo';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let funcs=[],postos=[],solicitantes=[],extras=[];
+const editId=qs('id');
+
+async function init(){
+  const s=Sessao.get().token;
+  funcs=((await VegasAPI.listar('func',s)).dados)||[];
+  postos=((await VegasAPI.listar('postos',s)).dados)||[];
+  solicitantes=((await VegasAPI.listar('solic',s)).dados)||[];
+  extras=((await VegasAPI.listar('extras',s)).dados)||[];
+  render();
+  if(editId){carregarParaEdicao();}
+}
+
+function op(lista,val){return ['<option value=""></option>'].concat(lista.map(x=>`<option ${x===val?'selected':''}>${esc(x)}</option>`)).join('');}
+
+function render(){
+  C.innerHTML=`
+  <form id="f" class="card">
+    <div class="card-tit">${editId?'✏️ Editar registro':'➕ Nova Folga Trabalhada / Extra'}</div>
+    <div class="grid grid-3">
+      <div class="campo"><label>Data <span class="req">*</span></label><input type="date" name="data" required onchange="atualizaDia()"></div>
+      <div class="campo"><label>Dia da semana</label><input name="dia_semana" readonly placeholder="automático"></div>
+      <div class="campo"><label>Solicitante</label><input name="solicitante" list="dl-solic" placeholder="Quem solicitou"></div>
+
+      <div class="campo"><label>Posto <span class="req">*</span></label><input name="posto" list="dl-postos" required placeholder="Selecione ou digite"><div class="dica">Se não existir, será criado ao salvar.</div></div>
+      <div class="campo"><label>Funcionário <span class="req">*</span></label><input name="funcionario" list="dl-funcs" required onchange="preencheFunc()" placeholder="Selecione ou digite"></div>
+      <div class="campo"><label>Função</label><select name="funcao">${op(VEGAS_CONFIG.FUNCOES,'Vigilante')}</select></div>
+
+      <div class="campo"><label>Entrada <span class="req">*</span></label><input name="entrada" required placeholder="07:00" onblur="calc()"></div>
+      <div class="campo"><label>Saída <span class="req">*</span></label><input name="saida" required placeholder="19:00" onblur="calc()"></div>
+      <div class="campo"><label>Horas trabalhadas</label><input name="horas_texto" readonly placeholder="automático"><div class="dica" id="viraDia"></div></div>
+    </div>
+
+    <div class="campo col-full mt"><label>Tipo de cobertura (pode marcar mais de um)</label>
+      <div class="chips-check" id="tipos">
+        ${VEGAS_CONFIG.TIPOS_COBERTURA.map((t,i)=>`<span class="chip-check"><input type="checkbox" id="tp${i}" value="${esc(t)}" ${t==='Extra'?'checked':''}><label for="tp${i}">${esc(t)}</label></span>`).join('')}
+      </div>
+    </div>
+
+    <div class="grid mt">
+      <div class="campo"><label>Motivo</label><input name="motivo" list="dl-motivos" placeholder="Ex.: Sem efetivo"></div>
+      <div class="campo"><label>Valor estimado (R$) — opcional</label><input name="valor" inputmode="decimal" placeholder="0,00"><div class="dica">Preenchimento manual. O sistema não assume valores automaticamente.</div></div>
+      <div class="campo col-full"><label>Observações</label><textarea name="observacoes"></textarea></div>
+    </div>
+
+    <div class="dupla-alerta hidden" id="alertaDup"></div>
+
+    <div class="flex mt flex-end">
+      <a class="btn btn-neutro" href="extras.html">Cancelar</a>
+      <button type="button" class="btn btn-neutro" onclick="salvar('Rascunho')">Salvar rascunho</button>
+      <button type="button" class="btn btn-primario" onclick="salvar('Aguardando aprovação')">${editId?'Salvar alterações':'Cadastrar'}</button>
+    </div>
+  </form>
+  <datalist id="dl-postos">${postos.map(p=>`<option value="${esc(p.nome)}">`).join('')}</datalist>
+  <datalist id="dl-funcs">${funcs.map(f=>`<option value="${esc(f.nome)}">`).join('')}</datalist>
+  <datalist id="dl-solic">${solicitantes.map(x=>`<option value="${esc(x.nome)}">`).join('')}</datalist>
+  <datalist id="dl-motivos">${VEGAS_CONFIG.MOTIVOS.map(m=>`<option value="${esc(m)}">`).join('')}</datalist>`;
+  if(!editId)document.querySelector('[name=data]').value=hojeISO(),atualizaDia();
+}
+
+function atualizaDia(){const f=document.getElementById('f');f.dia_semana.value=diaSemanaDeISO(f.data.value);}
+function preencheFunc(){
+  const f=document.getElementById('f');
+  const fu=funcs.find(x=>x.nome.toLowerCase()===f.funcionario.value.trim().toLowerCase());
+  if(fu&&fu.funcao){f.funcao.value=fu.funcao;}
+}
+function calc(){
+  const f=document.getElementById('f');
+  const h=calcularHoras(f.entrada.value,f.saida.value);
+  if(h.entrada)f.entrada.value=h.entrada; if(h.saida)f.saida.value=h.saida;
+  f.horas_texto.value=h.texto||''; 
+  document.getElementById('viraDia').textContent=h.viraDia?'Atravessa a meia-noite (termina no dia seguinte).':'';
+  checarDuplicidade();
+}
+function checarDuplicidade(){
+  const f=document.getElementById('f');
+  const dup=extras.find(r=>r.id!==editId && r.funcionario && f.funcionario.value &&
+    r.funcionario.toLowerCase()===f.funcionario.value.trim().toLowerCase() &&
+    String(r.data).slice(0,10)===f.data.value && r.entrada===f.entrada.value);
+  const box=document.getElementById('alertaDup');
+  if(dup){box.textContent=`⚠ Já existe um extra para ${f.funcionario.value} nesse dia e horário (${dup.numero}).`;box.classList.remove('hidden');}
+  else box.classList.add('hidden');
+}
+
+function carregarParaEdicao(){
+  const r=extras.find(x=>x.id===editId);if(!r){toast('Registro não encontrado.','erro');return;}
+  const f=document.getElementById('f');
+  f.data.value=String(r.data).slice(0,10);atualizaDia();
+  ['solicitante','posto','funcionario','funcao','entrada','saida','motivo','valor','observacoes'].forEach(k=>{if(f[k])f[k].value=r[k]||'';});
+  f.horas_texto.value=r.horas_texto||'';
+  (r.tipos||[]).forEach(t=>{const cb=[...document.querySelectorAll('#tipos input')].find(c=>c.value===t);if(cb)cb.checked=true;});
+  // desmarca Extra se não estava
+  if(!(r.tipos||[]).includes('Extra')){const ex=[...document.querySelectorAll('#tipos input')].find(c=>c.value==='Extra');if(ex)ex.checked=false;}
+}
+
+async function salvar(status){
+  const f=document.getElementById('f');
+  const obrig=['data','posto','funcionario','entrada','saida'];
+  let ok=true;obrig.forEach(k=>{if(!f[k].value.trim()){f[k].classList.add('erro');ok=false;}else f[k].classList.remove('erro');});
+  if(!ok){toast('Preencha os campos obrigatórios.','erro');return;}
+  const h=calcularHoras(f.entrada.value,f.saida.value);
+  const tipos=[...document.querySelectorAll('#tipos input:checked')].map(c=>c.value);
+  const s=Sessao.get();
+
+  // cadastra posto/funcionário/solicitante se novos
+  await garantirCadastro('postos',postos,f.posto.value,{nome:f.posto.value});
+  await garantirCadastro('func',funcs,f.funcionario.value,{nome:f.funcionario.value,funcao:f.funcao.value,status:'Ativo'});
+  if(f.solicitante.value)await garantirCadastro('solic',solicitantes,f.solicitante.value,{nome:f.solicitante.value});
+
+  const base={
+    data:f.data.value,dia_semana:f.dia_semana.value,solicitante:f.solicitante.value,
+    posto:f.posto.value,funcionario:f.funcionario.value,funcao:f.funcao.value,
+    entrada:h.entrada||f.entrada.value,saida:h.saida||f.saida.value,horas:h.horas,horas_texto:h.texto,vira_dia:h.viraDia,
+    tipos:tipos.length?tipos:['Extra'],motivo:f.motivo.value,valor:f.valor.value,observacoes:f.observacoes.value,status
+  };
+  carregando(true,'Salvando…');
+  if(editId){
+    await VegasAPI.atualizar('extras',editId,base,s.token);
+    await auditar('Editou registro',extras.find(x=>x.id===editId)?.numero||'',status);
+    toast('Registro atualizado.','ok');
+  }else{
+    const numero=proximoNumero(extras);
+    const reg={id:novoId(),numero,...base,criado_por:s.usuario,criado_em:agoraISO()};
+    await VegasAPI.criar('extras',reg,s.token);
+    await auditar('Criou registro',numero,status);
+    toast('Registro '+numero+' cadastrado.','ok');
+  }
+  carregando(false);
+  setTimeout(()=>location.href='extras.html',800);
+}
+
+async function garantirCadastro(colecao,lista,nome,obj){
+  if(!nome||!nome.trim())return;
+  const existe=lista.find(x=>(x.nome||'').toLowerCase()===nome.trim().toLowerCase());
+  if(!existe){await VegasAPI.criar(colecao,{id:novoId(),...obj,criado_em:agoraISO()},Sessao.get().token);}
+}
+init();
+</script>
+</body>
+</html>

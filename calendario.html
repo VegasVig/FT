@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendário — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='calendario';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let TODOS=[];let ref=new Date();ref.setDate(1);
+async function init(){carregando(true);TODOS=((await VegasAPI.listar('extras',Sessao.get().token)).dados)||[];carregando(false);render();}
+function render(){
+  const ano=ref.getFullYear(),mes=ref.getMonth();
+  const primeiro=new Date(ano,mes,1),ini=primeiro.getDay();
+  const diasNoMes=new Date(ano,mes+1,0).getDate();
+  const hoje=hojeISO();
+  let celulas=[];
+  for(let i=0;i<ini;i++)celulas.push(null);
+  for(let d=1;d<=diasNoMes;d++)celulas.push(d);
+  while(celulas.length%7)celulas.push(null);
+
+  const doDia=d=>{const iso=`${ano}-${pad(mes+1)}-${pad(d)}`;return TODOS.filter(r=>String(r.data||'').slice(0,10)===iso);};
+
+  let html=`<div class="card">
+    <div class="cal-head">
+      <div class="flex"><button class="btn btn-neutro btn-sm" onclick="nav(-1)">‹ Anterior</button>
+      <button class="btn btn-neutro btn-sm" onclick="hojeMes()">Hoje</button>
+      <button class="btn btn-neutro btn-sm" onclick="nav(1)">Próximo ›</button></div>
+      <div class="mes">${MESES[mes]} ${ano}</div>
+    </div>
+    <div class="cal-grid">
+      ${['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}`;
+  celulas.forEach(d=>{
+    if(d===null){html+=`<div class="cal-dia fora"></div>`;return;}
+    const iso=`${ano}-${pad(mes+1)}-${pad(d)}`;const regs=doDia(d);
+    const pontos=[...new Set(regs.map(r=>r.status))].map(st=>{
+      const cls={'Aguardando aprovação':'pt-aguardando','Aprovado':'pt-aprovado','Pago':'pt-pago','Recusado':'pt-recusado'}[st]||'';
+      return cls?`<span class="pt ${cls}"></span>`:'';
+    }).join('');
+    html+=`<div class="cal-dia ${iso===hoje?'hoje':''}" onclick="verDia('${iso}')">
+      <div class="d">${d}</div>
+      ${regs.length?`<span class="qtd">${regs.length} ${regs.length===1?'extra':'extras'}</span>`:''}
+      <div class="pontos">${pontos}</div></div>`;
+  });
+  html+=`</div>
+    <div class="cal-legenda">
+      <span><span class="pt pt-aguardando"></span> Aguardando</span>
+      <span><span class="pt pt-aprovado"></span> Aprovado</span>
+      <span><span class="pt pt-pago"></span> Pago</span>
+      <span><span class="pt pt-recusado"></span> Recusado</span>
+    </div></div>
+    <div id="diaDet"></div>`;
+  C.innerHTML=html;
+}
+function nav(n){ref.setMonth(ref.getMonth()+n);render();}
+function hojeMes(){ref=new Date();ref.setDate(1);render();}
+function verDia(iso){
+  const regs=TODOS.filter(r=>String(r.data||'').slice(0,10)===iso);
+  let h=`<div class="card"><div class="card-tit">${dataBRQualquer(iso)} — ${diaSemanaDeISO(iso)} (${regs.length})</div>`;
+  if(!regs.length)h+=`<div class="vazio"><div class="ic">📭</div>Nenhum extra nesse dia.</div>`;
+  else{h+=`<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nº</th><th>Funcionário</th><th>Posto</th><th>Horário</th><th>Horas</th><th>Status</th></tr></thead><tbody>`;
+    regs.forEach(r=>h+=`<tr onclick="location.href='extras.html?q=${encodeURIComponent(r.numero)}'" style="cursor:pointer">
+      <td data-l="Nº"><span class="num-reg">${esc(r.numero)}</span></td><td data-l="Funcionário">${esc(r.funcionario)}</td>
+      <td data-l="Posto">${esc(r.posto)}</td><td data-l="Horário">${esc(r.entrada)}–${esc(r.saida)}</td>
+      <td data-l="Horas">${esc(r.horas_texto||r.horas+'h')}</td><td data-l="Status">${badgeStatus(r.status)}</td></tr>`);
+    h+=`</tbody></table></div>`;}
+  h+=`</div>`;document.getElementById('diaDet').innerHTML=h;
+  document.getElementById('diaDet').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+init();
+</script>
+</body>
+</html>

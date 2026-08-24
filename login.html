@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Vegas Gestão de Folgas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <img src="assets/logo-vegas-escura.png" alt="Vegas Vigilância">
+    <h2>Gestão de Folgas &amp; Extras</h2>
+    <div class="sub">Acesso restrito — Vegas Vigilância</div>
+    <form id="f">
+      <div class="campo"><label>Usuário ou e-mail</label><input name="usuario" autocomplete="username" required></div>
+      <div class="campo"><label>Senha</label><input name="senha" type="password" autocomplete="current-password" required></div>
+      <div class="msg-erro" id="erro">Usuário ou senha inválidos.</div>
+      <button class="btn btn-primario btn-bloco" id="btn" type="submit">Entrar</button>
+    </form>
+    <a href="#" class="link-mini" onclick="recuperar();return false;">Esqueci minha senha</a>
+    <div class="dica" id="demo" style="margin-top:18px;font-size:.75rem;color:var(--cinza-400)"></div>
+  </div>
+</div>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script>
+if(Sessao.logado())location.href='dashboard.html';
+if(VEGAS_CONFIG.MODO_DEMO){
+  document.getElementById('demo').innerHTML='Modo demonstração — usuário <b>admin</b> / senha <b>Vegas4747@</b>';
+}
+function recuperar(){
+  toast('Para redefinir a senha, contate o administrador do sistema.','');
+}
+const f=document.getElementById('f');
+f.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const btn=document.getElementById('btn'),erro=document.getElementById('erro');
+  erro.classList.remove('on');btn.disabled=true;btn.textContent='Entrando…';
+  try{
+    const r=await VegasAPI.login(f.usuario.value.trim(),f.senha.value);
+    if(r&&r.ok){Sessao.set({token:r.token,usuario:r.usuario,papel:r.papel});location.href='dashboard.html';}
+    else{erro.textContent=(r&&r.erro)||'Usuário ou senha inválidos.';erro.classList.add('on');}
+  }catch(err){erro.textContent='Erro de conexão. Tente novamente.';erro.classList.add('on');}
+  finally{btn.disabled=false;btn.textContent='Entrar';}
+});
+</script>
+</body>
+</html>

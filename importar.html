@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Importar Texto — Vegas Folgas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='importar';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let encontrados=[]; let funcs=[],postos=[];
+
+async function init(){
+  const s=Sessao.get().token;
+  funcs=((await VegasAPI.listar('func',s)).dados)||[];
+  postos=((await VegasAPI.listar('postos',s)).dados)||[];
+  render();
+}
+
+function render(){
+  C.innerHTML=`
+  <div class="card">
+    <div class="card-tit">📥 Importar mensagem do WhatsApp</div>
+    <div class="info-box mb">Cole a mensagem recebida (um ou vários funcionários). O sistema separa cada funcionário em um registro. Depois você confere e ajusta antes de salvar.</div>
+    <div class="campo">
+      <label>Cole o texto aqui</label>
+      <textarea id="txt" style="min-height:180px" placeholder="Ex.:
+EXTRA: 24/08 - SEGUNDA-FEIRA
+SOLICITANTE: Marco Aurélio
+POSTO: DC Dutra
+FUNCIONÁRIO: Luis Claudio
+FUNÇÃO: Vigilante
+TURNO: 07:00 às 19:00
+COBERTURA: Extra (ponto fechado)
+MOTIVO: Sem efetivo"></textarea>
+    </div>
+    <div class="flex mt">
+      <button class="btn btn-primario" onclick="processar()">⚙️ Processar texto</button>
+      <button class="btn btn-neutro" onclick="exemplo()">Usar exemplo</button>
+      <button class="btn btn-neutro" onclick="document.getElementById('txt').value=''">Limpar</button>
+    </div>
+  </div>
+  <div id="resultado"></div>`;
+}
+
+function exemplo(){
+  document.getElementById('txt').value=`*EXTRA* 24/08 - SEGUNDA-FEIRA
+SOLICITANTE: Marco Aurélio
+FUNÇÃO: Vigilante
+TURNO: 19:00 às 07:00
+COBERTURA: Extra (ponto fechado)
+MOTIVO: Sem efetivo
+1. Luis Claudio — DC Dutra
+2. Marcelo Nunes — Abreu
+3. Laércio Jorge — Lauer Engenharia
+4. Francisco André — Casa de Pedra`;
+}
+
+function processar(){
+  const txt=document.getElementById('txt').value;
+  if(!txt.trim()){toast('Cole a mensagem primeiro.','erro');return;}
+  encontrados=parseWhatsApp(txt);
+  if(!encontrados.length){toast('Não consegui identificar registros. Confira o texto.','erro');return;}
+  renderConferencia();
+}
+
+function opcoes(lista,val){return ['<option value=""></option>'].concat(lista.map(x=>`<option ${x===val?'selected':''}>${esc(x)}</option>`)).join('');}
+
+function renderConferencia(){
+  let html=`<div class="card"><div class="card-tit">Registros encontrados (${encontrados.length})
+    <div class="acoes"><span class="txt-suave" style="font-size:.8rem">Ajuste qualquer campo antes de salvar</span></div></div>
+    <div class="tabela-wrap"><table style="min-width:1000px"><thead><tr>
+    <th>Data</th><th>Solicitante</th><th>Posto</th><th>Funcionário</th><th>Função</th><th>Entrada</th><th>Saída</th><th>Horas</th><th>Cobertura</th><th>Motivo</th><th></th></tr></thead><tbody id="tbConf">`;
+  encontrados.forEach((r,i)=>html+=linhaConf(r,i));
+  html+=`</tbody></table></div>
+    <div class="flex mt flex-end">
+      <button class="btn btn-neutro" onclick="render()">Cancelar</button>
+      <button class="btn btn-ok" onclick="confirmarTodos()">✓ Confirmar e cadastrar todos</button>
+    </div></div>`;
+  document.getElementById('resultado').innerHTML=html;
+  recalcLinhas();
+}
+function linhaConf(r,i){
+  const h=calcularHoras(r.entrada,r.saida);
+  const dupAlerta='';
+  return `<tr data-i="${i}">
+    <td><input type="date" value="${esc(String(r.data||'').slice(0,10))}" onchange="upd(${i},'data',this.value)"></td>
+    <td><input value="${esc(r.solicitante)}" onchange="upd(${i},'solicitante',this.value)" style="min-width:110px"></td>
+    <td><input value="${esc(r.posto)}" onchange="upd(${i},'posto',this.value)" list="dl-postos" style="min-width:120px"></td>
+    <td><input value="${esc(r.funcionario)}" onchange="upd(${i},'funcionario',this.value)" list="dl-funcs" style="min-width:130px"></td>
+    <td><select onchange="upd(${i},'funcao',this.value)" style="min-width:120px">${opcoes(VEGAS_CONFIG.FUNCOES,r.funcao||'Vigilante')}</select></td>
+    <td><input value="${esc(r.entrada)}" onchange="upd(${i},'entrada',this.value)" style="width:64px" placeholder="00:00"></td>
+    <td><input value="${esc(r.saida)}" onchange="upd(${i},'saida',this.value)" style="width:64px" placeholder="00:00"></td>
+    <td class="hcell txt-mono">${h.texto||'—'}</td>
+    <td><select onchange="upd(${i},'tipo1',this.value)" style="min-width:120px">${opcoes(VEGAS_CONFIG.TIPOS_COBERTURA,(r.tipos||[])[0]||'Extra')}</select></td>
+    <td><input value="${esc(r.motivo)}" onchange="upd(${i},'motivo',this.value)" list="dl-motivos" style="min-width:110px"></td>
+    <td><button class="btn-icone" title="Remover" onclick="removerLinha(${i})">🗑</button></td>
+  </tr>`;
+}
+function upd(i,campo,val){
+  if(campo==='tipo1'){encontrados[i].tipos=[val];}
+  else encontrados[i][campo]=val;
+  if(campo==='data')encontrados[i].dia_semana=diaSemanaDeISO(val);
+  if(campo==='entrada'||campo==='saida')recalcLinhas();
+}
+function recalcLinhas(){
+  document.querySelectorAll('#tbConf tr').forEach(tr=>{
+    const i=+tr.dataset.i;const h=calcularHoras(encontrados[i].entrada,encontrados[i].saida);
+    const c=tr.querySelector('.hcell');if(c)c.textContent=h.texto||'—';
+  });
+}
+function removerLinha(i){encontrados.splice(i,1);if(!encontrados.length){render();return;}renderConferencia();}
+
+async function confirmarTodos(){
+  // validação básica
+  const invalidos=encontrados.filter(r=>!r.funcionario||!r.posto||!r.data);
+  if(invalidos.length){toast('Preencha data, posto e funcionário em todos os registros.','erro');return;}
+  carregando(true,'Cadastrando registros…');
+  const s=Sessao.get();
+  // pega lista atual p/ numeração sequencial
+  const atuais=((await VegasAPI.listar('extras',s.token)).dados)||[];
+  const novos=[];let seqBase=atuais.slice();
+  encontrados.forEach(r=>{
+    const h=calcularHoras(r.entrada,r.saida);
+    const numero=proximoNumero(seqBase.concat(novos));
+    const reg={
+      id:novoId(),numero,
+      data:String(r.data).slice(0,10),dia_semana:diaSemanaDeISO(r.data),
+      solicitante:r.solicitante,posto:r.posto,funcionario:r.funcionario,funcao:r.funcao||'Vigilante',
+      entrada:h.entrada||r.entrada,saida:h.saida||r.saida,horas:h.horas,horas_texto:h.texto,vira_dia:h.viraDia,
+      tipos:r.tipos&&r.tipos.length?r.tipos:['Extra'],motivo:r.motivo,observacoes:'',
+      valor:'',valor_aprovado:'',
+      status:'Aguardando aprovação',
+      criado_por:s.usuario,criado_em:agoraISO()
+    };
+    novos.push(reg);
+  });
+  await VegasAPI.criarVarios('extras',novos,s.token);
+  await auditar('Importou '+novos.length+' registro(s) via texto','', novos.map(n=>n.numero).join(', '));
+  carregando(false);
+  toast(novos.length+' registro(s) cadastrado(s) com sucesso.','ok');
+  setTimeout(()=>location.href='extras.html',900);
+}
+
+init();
+</script>
+<datalist id="dl-postos"></datalist>
+<datalist id="dl-funcs"></datalist>
+<datalist id="dl-motivos"></datalist>
+<script>
+// popula datalists após carregar
+setTimeout(async()=>{
+  const s=Sessao.get().token;
+  const ps=((await VegasAPI.listar('postos',s)).dados)||[];
+  const fs=((await VegasAPI.listar('func',s)).dados)||[];
+  document.getElementById('dl-postos').innerHTML=ps.map(p=>`<option value="${esc(p.nome)}">`).join('');
+  document.getElementById('dl-funcs').innerHTML=fs.map(f=>`<option value="${esc(f.nome)}">`).join('');
+  document.getElementById('dl-motivos').innerHTML=VEGAS_CONFIG.MOTIVOS.map(m=>`<option value="${esc(m)}">`).join('');
+},600);
+</script>
+</body>
+</html>

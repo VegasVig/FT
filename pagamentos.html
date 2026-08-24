@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pagamentos — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='pagamentos';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let TODOS=[];let mesRef=hojeISO().slice(0,7);
+async function init(){carregando(true);TODOS=((await VegasAPI.listar('extras',Sessao.get().token)).dados)||[];carregando(false);render();}
+function val(r){return parseFloat(String(r.valor_aprovado||r.valor||'0').replace(',','.'))||0;}
+function render(){
+  C.innerHTML=`<div class="card"><div class="card-tit">💰 Controle de pagamentos
+    <div class="acoes"><input type="month" id="mes" value="${mesRef}" onchange="mesRef=this.value;render()"></div></div>
+    <div class="info-box mb">Agrupado por funcionário. Considera registros <b>aprovados</b> e <b>pagos</b> do mês selecionado. Valores são os informados manualmente.</div>
+    <div id="tab"></div></div>`;
+  renderTab();
+}
+function renderTab(){
+  const doMes=TODOS.filter(r=>String(r.data||'').slice(0,7)===mesRef && ['Aprovado','Pago'].includes(r.status));
+  const porFunc={};
+  doMes.forEach(r=>{const k=r.funcionario||'—';(porFunc[k]=porFunc[k]||{nome:k,horas:0,qtd:0,estimado:0,aprovado:0,pago:0,registros:[]});
+    porFunc[k].qtd++;porFunc[k].horas+=(+r.horas||0);
+    porFunc[k].estimado+=parseFloat(String(r.valor||'0').replace(',','.'))||0;
+    porFunc[k].aprovado+=val(r);
+    if(r.status==='Pago')porFunc[k].pago+=val(r);
+    porFunc[k].registros.push(r);});
+  const linhas=Object.values(porFunc).sort((a,b)=>b.aprovado-a.aprovado);
+  let h=`<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Funcionário</th><th>Extras</th><th>Horas</th><th>Estimado</th><th>Aprovado</th><th>Pago</th><th>Ação</th></tr></thead><tbody>`;
+  if(!linhas.length)h+=`<tr><td colspan="7"><div class="vazio"><div class="ic">💰</div>Nenhum valor aprovado neste mês.</div></td></tr>`;
+  linhas.forEach(l=>{
+    const pendente=l.aprovado-l.pago;
+    h+=`<tr>
+      <td data-l="Funcionário">${esc(l.nome)}</td>
+      <td data-l="Extras">${l.qtd}</td>
+      <td data-l="Horas" class="txt-mono">${l.horas.toFixed(1)}h</td>
+      <td data-l="Estimado">R$ ${l.estimado.toFixed(2)}</td>
+      <td data-l="Aprovado">R$ ${l.aprovado.toFixed(2)}</td>
+      <td data-l="Pago">R$ ${l.pago.toFixed(2)}</td>
+      <td data-l="Ação">${pendente>0?`<button class="btn btn-primario btn-sm" onclick="pagarFunc('${encodeURIComponent(l.nome)}')">Marcar pago (R$ ${pendente.toFixed(2)})</button>`:'<span class="badge b-pago">Quitado</span>'}</td></tr>`;
+  });
+  h+=`</tbody></table></div>`;
+  // totais
+  const tE=linhas.reduce((s,l)=>s+l.estimado,0),tA=linhas.reduce((s,l)=>s+l.aprovado,0),tP=linhas.reduce((s,l)=>s+l.pago,0);
+  h+=`<div class="stats mt">
+    <div class="stat info"><div class="n">R$ ${tE.toFixed(2)}</div><div class="l">Total estimado</div></div>
+    <div class="stat ok"><div class="n">R$ ${tA.toFixed(2)}</div><div class="l">Total aprovado</div></div>
+    <div class="stat prata"><div class="n">R$ ${tP.toFixed(2)}</div><div class="l">Total pago</div></div>
+    <div class="stat aviso"><div class="n">R$ ${(tA-tP).toFixed(2)}</div><div class="l">A pagar</div></div>
+  </div>`;
+  document.getElementById('tab').innerHTML=h;
+}
+async function pagarFunc(nomeEnc){
+  const nome=decodeURIComponent(nomeEnc);
+  if(!confirm(`Marcar como pago todos os extras aprovados de ${nome} em ${mesRef}?`))return;
+  const s=Sessao.get();carregando(true,'Registrando pagamento…');
+  const alvo=TODOS.filter(r=>r.funcionario===nome && String(r.data||'').slice(0,7)===mesRef && r.status==='Aprovado');
+  for(const r of alvo){await VegasAPI.atualizar('extras',r.id,{status:'Pago',pago_por:s.usuario,pago_em:agoraISO()},s.token);}
+  await auditar('Marcou pagamento em lote',nome,mesRef+' ('+alvo.length+' registros)');
+  TODOS=((await VegasAPI.listar('extras',s.token)).dados)||[];carregando(false);toast(alvo.length+' registro(s) marcados como pagos.','ok');renderTab();
+}
+init();
+</script>
+</body>
+</html>

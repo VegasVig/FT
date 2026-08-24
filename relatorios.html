@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Relatórios — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="pdf.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='relatorios';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let TODOS=[];let resultado=[];
+async function init(){carregando(true);TODOS=((await VegasAPI.listar('extras',Sessao.get().token)).dados)||[];carregando(false);render();}
+function render(){
+  const anos=[...new Set(TODOS.map(r=>String(r.data||'').slice(0,4)).filter(Boolean))];
+  if(!anos.includes(String(new Date().getFullYear())))anos.push(String(new Date().getFullYear()));
+  const funcs=[...new Set(TODOS.map(r=>r.funcionario).filter(Boolean))].sort();
+  const postos=[...new Set(TODOS.map(r=>r.posto).filter(Boolean))].sort();
+  const sel=(l,ph)=>[`<option value="">${ph||'Todos'}</option>`].concat(l.map(x=>`<option>${esc(x)}</option>`)).join('');
+  C.innerHTML=`<div class="filtros">
+    <div class="linha">
+      <div class="campo"><label>Mês</label><select id="mes"><option value="">Todos</option>${MESES.map((m,i)=>`<option value="${pad(i+1)}">${m}</option>`).join('')}</select></div>
+      <div class="campo"><label>Ano</label><select id="ano">${sel(anos.sort())}</select></div>
+      <div class="campo"><label>Funcionário</label><select id="func">${sel(funcs)}</select></div>
+      <div class="campo"><label>Posto</label><select id="posto">${sel(postos)}</select></div>
+      <div class="campo"><label>Status</label><select id="status">${sel(VEGAS_CONFIG.STATUS)}</select></div>
+    </div>
+    <div class="botoes">
+      <button class="btn btn-primario btn-sm" onclick="gerar()">Gerar relatório</button>
+      <button class="btn btn-neutro btn-sm" onclick="pdfMensal()">📄 PDF mensal</button>
+      <button class="btn btn-neutro btn-sm" onclick="pdfPorFunc()">📄 PDF por funcionário</button>
+      <button class="btn btn-neutro btn-sm" onclick="csv()">Exportar CSV</button>
+      <button class="btn btn-neutro btn-sm no-print" onclick="window.print()">🖨 Imprimir</button>
+    </div>
+  </div>
+  <div id="rel"></div>`;
+  // default ano/mês atuais
+  document.getElementById('ano').value=String(new Date().getFullYear());
+  document.getElementById('mes').value=pad(new Date().getMonth()+1);
+  gerar();
+}
+function filtrar(){
+  const mes=document.getElementById('mes').value,ano=document.getElementById('ano').value;
+  const func=document.getElementById('func').value,posto=document.getElementById('posto').value,status=document.getElementById('status').value;
+  return TODOS.filter(r=>{
+    const d=String(r.data||'').slice(0,10);
+    if(ano&&d.slice(0,4)!==ano)return false;
+    if(mes&&d.slice(5,7)!==mes)return false;
+    if(func&&r.funcionario!==func)return false;
+    if(posto&&r.posto!==posto)return false;
+    if(status&&r.status!==status)return false;
+    return true;
+  }).sort((a,b)=>String(a.data).localeCompare(String(b.data)));
+}
+function periodoTxt(){
+  const mes=document.getElementById('mes').value,ano=document.getElementById('ano').value;
+  return (mes?MESES[+mes-1]+'/':'')+(ano||'Todos');
+}
+function gerar(){
+  resultado=filtrar();
+  const r=resultado;
+  let hh=r.reduce((s,x)=>s+(+x.horas||0),0);
+  let est=r.reduce((s,x)=>s+(parseFloat(String(x.valor||'0').replace(',','.'))||0),0);
+  let aprov=r.filter(x=>['Aprovado','Pago'].includes(x.status)).reduce((s,x)=>s+(parseFloat(String(x.valor_aprovado||x.valor||'0').replace(',','.'))||0),0);
+  let pago=r.filter(x=>x.status==='Pago').reduce((s,x)=>s+(parseFloat(String(x.valor_aprovado||x.valor||'0').replace(',','.'))||0),0);
+
+  let html=`<div class="card"><div class="card-tit">Relatório — ${periodoTxt()} <span class="txt-suave" style="font-size:.8rem;margin-left:8px">${r.length} registro(s)</span></div>`;
+  html+=`<div class="tabela-wrap"><table class="responsiva" style="min-width:900px"><thead><tr>
+    <th>Nº</th><th>Data</th><th>Funcionário</th><th>Função</th><th>Posto</th><th>Turno</th><th>Horas</th><th>Tipo</th><th>Motivo</th><th>Status</th><th>Valor</th></tr></thead><tbody>`;
+  if(!r.length)html+=`<tr><td colspan="11"><div class="vazio"><div class="ic">📊</div>Nenhum registro no período.</div></td></tr>`;
+  r.forEach(x=>html+=`<tr>
+    <td data-l="Nº"><span class="num-reg">${esc(x.numero)}</span></td><td data-l="Data">${dataBRQualquer(x.data)}</td>
+    <td data-l="Funcionário">${esc(x.funcionario)}</td><td data-l="Função">${esc(x.funcao)}</td><td data-l="Posto">${esc(x.posto)}</td>
+    <td data-l="Turno">${esc(x.entrada)}–${esc(x.saida)}</td><td data-l="Horas">${esc(x.horas_texto||x.horas+'h')}</td>
+    <td data-l="Tipo">${esc((x.tipos||[]).join(', '))}</td><td data-l="Motivo">${esc(x.motivo)}</td>
+    <td data-l="Status">${badgeStatus(x.status)}</td><td data-l="Valor">${x.valor?('R$ '+x.valor):'—'}</td></tr>`);
+  html+=`</tbody></table></div>
+    <div class="stats mt">
+      <div class="stat"><div class="n">${r.length}</div><div class="l">Total de registros</div></div>
+      <div class="stat prata"><div class="n">${hh.toFixed(1)}h</div><div class="l">Total de horas</div></div>
+      <div class="stat info"><div class="n">R$ ${est.toFixed(2)}</div><div class="l">Total estimado</div></div>
+      <div class="stat ok"><div class="n">R$ ${aprov.toFixed(2)}</div><div class="l">Total aprovado</div></div>
+      <div class="stat prata"><div class="n">R$ ${pago.toFixed(2)}</div><div class="l">Total pago</div></div>
+    </div></div>`;
+  document.getElementById('rel').innerHTML=html;
+}
+function pdfMensal(){if(!resultado.length){toast('Gere o relatório primeiro.','erro');return;}pdfRelatorio(resultado,{periodo:periodoTxt(),subtitulo:'Relatório mensal — '+periodoTxt()},true);}
+function pdfPorFunc(){
+  const func=document.getElementById('func').value;
+  if(!func){toast('Selecione um funcionário no filtro para o PDF individual.','erro');return;}
+  const lista=resultado.filter(r=>r.funcionario===func);
+  pdfRelatorio(lista,{periodo:periodoTxt(),subtitulo:'Funcionário: '+func},true);
+}
+function csv(){
+  exportarCSV('relatorio_vegas.csv',
+    ['Nº','Data','Funcionário','Função','Posto','Turno','Horas','Tipo','Motivo','Solicitante','Status','Valor'],
+    resultado.map(r=>[r.numero,dataBRQualquer(r.data),r.funcionario,r.funcao,r.posto,(r.entrada+'-'+r.saida),r.horas_texto||r.horas,(r.tipos||[]).join('/'),r.motivo,r.solicitante,r.status,r.valor]));
+}
+init();
+</script>
+</body>
+</html>

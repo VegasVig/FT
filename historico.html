@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Histórico — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='historico';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let LOG=[];let q='';
+async function init(){carregando(true);LOG=((await VegasAPI.listar('hist',Sessao.get().token)).dados)||[];carregando(false);render();}
+function render(){
+  C.innerHTML=`<div class="card"><div class="card-tit">🕐 Histórico e auditoria</div>
+    <div class="info-box mb">Registro de todas as ações realizadas no sistema. Não pode ser apagado.</div>
+    <div class="campo mb"><input id="q" placeholder="Pesquisar por usuário, ação ou registro…" value="${esc(q)}"></div>
+    <div id="tab"></div></div>`;
+  document.getElementById('q').addEventListener('input',e=>{q=e.target.value;renderTab();});renderTab();
+}
+function renderTab(){
+  const lista=LOG.filter(e=>{if(!q)return true;return [e.usuario,e.acao,e.alvo,e.detalhe].join(' ').toLowerCase().includes(q.toLowerCase());});
+  let h=`<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Quando</th><th>Usuário</th><th>Ação</th><th>Registro</th><th>Detalhe</th></tr></thead><tbody>`;
+  if(!lista.length)h+=`<tr><td colspan="5"><div class="vazio"><div class="ic">🕐</div>Nenhum evento registrado ainda.</div></td></tr>`;
+  lista.forEach(e=>h+=`<tr>
+    <td data-l="Quando" class="txt-mono" style="font-size:.8rem">${formatarDataHora(e.quando)}</td>
+    <td data-l="Usuário">${esc(e.usuario)} <span class="txt-suave" style="font-size:.72rem">(${esc(e.papel)})</span></td>
+    <td data-l="Ação">${esc(e.acao)}</td>
+    <td data-l="Registro"><span class="num-reg">${esc(e.alvo)}</span></td>
+    <td data-l="Detalhe">${esc(e.detalhe)}</td></tr>`);
+  h+=`</tbody></table></div>`;document.getElementById('tab').innerHTML=h;
+}
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configurações — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='config';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+async function init(){
+  const cfg=(VEGAS_CONFIG.MODO_DEMO)?(VegasAPI._ler('vg_folgas_cfg')[0]||{}):{};
+  render(cfg);
+}
+function render(cfg){
+  cfg=cfg||{};
+  C.innerHTML=`
+  <div class="card">
+    <div class="card-tit">⚙️ Configurações de valores (referência)</div>
+    <div class="aviso-box mb">O sistema <b>não</b> assume regras trabalhistas automaticamente. Estes valores servem apenas como referência para você preencher manualmente o valor de cada extra. Nenhum cálculo é aplicado sem sua confirmação.</div>
+    <div class="grid grid-3">
+      <div class="campo"><label>Valor da hora normal (R$)</label><input id="hora_normal" value="${esc(cfg.hora_normal||'')}" inputmode="decimal" placeholder="0,00"></div>
+      <div class="campo"><label>Valor da hora extra (R$)</label><input id="hora_extra" value="${esc(cfg.hora_extra||'')}" inputmode="decimal" placeholder="0,00"></div>
+      <div class="campo"><label>Valor do plantão (R$)</label><input id="plantao" value="${esc(cfg.plantao||'')}" inputmode="decimal" placeholder="0,00"></div>
+      <div class="campo"><label>Adicional noturno (R$)</label><input id="ad_noturno" value="${esc(cfg.ad_noturno||'')}" inputmode="decimal" placeholder="0,00"></div>
+      <div class="campo col-2"><label>Outros adicionais / observações</label><input id="outros" value="${esc(cfg.outros||'')}"></div>
+    </div>
+    <div class="flex mt flex-end"><button class="btn btn-primario" onclick="salvar()">Salvar configurações</button></div>
+  </div>
+
+  <div class="card">
+    <div class="card-tit">🔐 Acesso</div>
+    <p class="txt-suave" style="font-size:.9rem">Usuário atual: <b>${esc((Sessao.get()||{}).usuario)}</b> — perfil <b>${esc((Sessao.get()||{}).papel)}</b>.</p>
+    <p class="txt-suave" style="font-size:.85rem;margin-top:8px">${VEGAS_CONFIG.MODO_DEMO?'Em modo demonstração o acesso é feito com <b>admin / Vegas4747@</b>. Em produção, a senha fica no Google Apps Script (arquivo Code.gs, função configurarInicial).':'Autenticação via Google Apps Script.'}</p>
+  </div>
+
+  <div class="card">
+    <div class="card-tit">💾 Dados e backup</div>
+    <p class="txt-suave" style="font-size:.9rem;margin-bottom:12px">${VEGAS_CONFIG.MODO_DEMO?'Você está em <b>modo demonstração</b> (dados salvos neste navegador). Para usar o Google Sheets, siga o arquivo <b>backend/INSTRUCOES-BACKEND.md</b>.':'Conectado ao Google Sheets.'}</p>
+    <div class="flex">
+      <button class="btn btn-neutro btn-sm" onclick="exportarTudo()">Exportar backup (JSON)</button>
+      ${VEGAS_CONFIG.MODO_DEMO?'<button class="btn btn-perigo btn-sm" onclick="limparDemo()">Apagar dados de demonstração</button>':''}
+    </div>
+  </div>`;
+}
+function salvar(){
+  const g=id=>document.getElementById(id).value;
+  const cfg={hora_normal:g('hora_normal'),hora_extra:g('hora_extra'),plantao:g('plantao'),ad_noturno:g('ad_noturno'),outros:g('outros')};
+  if(VEGAS_CONFIG.MODO_DEMO){VegasAPI._sav('vg_folgas_cfg',[cfg]);}
+  else{VegasAPI.criar('cfg',{id:'config',...cfg},Sessao.get().token);}
+  auditar('Atualizou configurações de valores','','');
+  toast('Configurações salvas.','ok');
+}
+function exportarTudo(){
+  const dump={};['extras','func','postos','solic','hist','cfg'].forEach(k=>{dump[k]=VegasAPI._ler(VegasAPI.K[k]);});
+  const blob=new Blob([JSON.stringify(dump,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup_vegas_folgas.json';a.click();
+}
+function limparDemo(){if(!confirm('Isso apaga TODOS os dados de demonstração deste navegador. Continuar?'))return;Object.values(VegasAPI.K).forEach(k=>localStorage.removeItem(k));toast('Dados de demonstração apagados.','ok');setTimeout(()=>location.href='dashboard.html',800);}
+init();
+</script>
+</body>
+</html>

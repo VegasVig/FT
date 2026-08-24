@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Funcionários — Vegas</title>
+<link rel="icon" href="assets/logo-small.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="utils.js"></script>
+<script src="app.js"></script>
+<script>
+window.PAGINA='funcionarios';
+montarShell();
+const C=document.getElementById('conteudoPagina');
+let LISTA=[];let q='';let editId=null;
+
+async function init(){carregando(true);LISTA=((await VegasAPI.listar('func',Sessao.get().token)).dados)||[];carregando(false);render();}
+
+function render(){
+  C.innerHTML=`
+  <div class="card">
+    <div class="card-tit">👷 Funcionários
+      <div class="acoes"><button class="btn btn-primario btn-sm" onclick="abrir()">➕ Novo funcionário</button></div>
+    </div>
+    <div class="campo mb"><input id="q" placeholder="Pesquisar por nome, matrícula ou função…" value="${esc(q)}"></div>
+    <div id="tab"></div>
+  </div>`;
+  document.getElementById('q').addEventListener('input',e=>{q=e.target.value;renderTab();});
+  renderTab();
+}
+function renderTab(){
+  const lista=LISTA.filter(f=>{if(!q)return true;const a=[f.nome,f.matricula,f.funcao,f.telefone].join(' ').toLowerCase();return a.includes(q.toLowerCase());});
+  let h=`<div class="tabela-wrap"><table class="responsiva"><thead><tr><th>Nome</th><th>Matrícula</th><th>Função</th><th>Telefone</th><th>Admissão</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  if(!lista.length)h+=`<tr><td colspan="7"><div class="vazio"><div class="ic">👷</div>Nenhum funcionário.</div></td></tr>`;
+  lista.forEach(f=>h+=`<tr>
+    <td data-l="Nome">${esc(f.nome)}</td><td data-l="Matrícula">${esc(f.matricula)}</td>
+    <td data-l="Função">${esc(f.funcao)}</td><td data-l="Telefone">${esc(f.telefone)}</td>
+    <td data-l="Admissão">${dataBRQualquer(f.admissao)}</td>
+    <td data-l="Status"><span class="badge ${f.status==='Ativo'?'b-aprovado':f.status==='Afastado'||f.status==='Inativo'?'b-recusado':'b-aguardando'}">${esc(f.status||'Ativo')}</span></td>
+    <td data-l="Ações"><div class="acoes-linha">
+      <button class="btn-icone" onclick="abrir('${f.id}')" title="Editar">✏️</button>
+      <button class="btn-icone" onclick="excluir('${f.id}')" title="Excluir">🗑</button></div></td></tr>`);
+  h+=`</tbody></table></div>`;
+  document.getElementById('tab').innerHTML=h;
+}
+function abrir(id){
+  editId=id||null;const f=id?LISTA.find(x=>x.id===id):{};
+  const op=(l,v)=>['<option value=""></option>'].concat(l.map(x=>`<option ${x===v?'selected':''}>${esc(x)}</option>`)).join('');
+  let m=document.getElementById('modalF');if(!m){m=document.createElement('div');m.id='modalF';m.className='modal';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-card"><div class="modal-head"><h3>${id?'Editar':'Novo'} funcionário</h3><button class="fechar-x" onclick="fecha()">×</button></div>
+    <div class="modal-body"><div class="grid">
+      <div class="campo col-2"><label>Nome completo <span class="req">*</span></label><input id="nome" value="${esc(f.nome)}"></div>
+      <div class="campo"><label>Matrícula</label><input id="matricula" value="${esc(f.matricula)}"></div>
+      <div class="campo"><label>CPF</label><input id="cpf" value="${esc(f.cpf)}"></div>
+      <div class="campo"><label>Função</label><select id="funcao">${op(VEGAS_CONFIG.FUNCOES,f.funcao)}</select></div>
+      <div class="campo"><label>Telefone</label><input id="telefone" value="${esc(f.telefone)}"></div>
+      <div class="campo"><label>Data de admissão</label><input type="date" id="admissao" value="${esc(String(f.admissao||'').slice(0,10))}"></div>
+      <div class="campo"><label>Status</label><select id="status">${op(VEGAS_CONFIG.STATUS_FUNC,f.status||'Ativo')}</select></div>
+      <div class="campo col-2"><label>Observações</label><textarea id="obs">${esc(f.observacoes)}</textarea></div>
+    </div></div>
+    <div class="modal-foot"><button class="btn btn-neutro btn-sm" onclick="fecha()">Cancelar</button><button class="btn btn-primario btn-sm" onclick="salvar()">Salvar</button></div></div>`;
+  m.classList.add('on');m.onclick=e=>{if(e.target===m)fecha();};
+}
+function fecha(){const m=document.getElementById('modalF');if(m)m.classList.remove('on');}
+async function salvar(){
+  const g=id=>document.getElementById(id).value;
+  if(!g('nome').trim()){toast('Informe o nome.','erro');return;}
+  const obj={nome:g('nome'),matricula:g('matricula'),cpf:g('cpf'),funcao:g('funcao'),telefone:g('telefone'),admissao:g('admissao'),status:g('status'),observacoes:g('obs')};
+  carregando(true);const s=Sessao.get();
+  if(editId){await VegasAPI.atualizar('func',editId,obj,s.token);}
+  else{await VegasAPI.criar('func',{id:novoId(),...obj,criado_em:agoraISO()},s.token);}
+  LISTA=((await VegasAPI.listar('func',s.token)).dados)||[];carregando(false);toast('Salvo.','ok');fecha();renderTab();
+}
+async function excluir(id){const f=LISTA.find(x=>x.id===id);if(!confirm('Excluir '+f.nome+'?'))return;carregando(true);await VegasAPI.excluir('func',id,Sessao.get().token);LISTA=LISTA.filter(x=>x.id!==id);carregando(false);toast('Excluído.','ok');renderTab();}
+init();
+</script>
+</body>
+</html>
